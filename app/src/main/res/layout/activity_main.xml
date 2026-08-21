@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootScroll"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="#F5F7FA"
+    android:layoutDirection="rtl">
+
+    <LinearLayout
+        android:id="@+id/content"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="مركز الجنرال أوتوكار"
+            android:textStyle="bold"
+            android:textSize="24sp"
+            android:textColor="#102A43"
+            android:gravity="center"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="تقرير الفحص الفني وتقييم أضرار السيارة"
+            android:textStyle="bold"
+            android:textSize="18sp"
+            android:textColor="#8A5B00"
+            android:gravity="center"
+            android:paddingTop="6dp"
+            android:paddingBottom="14dp"/>
+
+        <Button
+            android:id="@+id/btnNew"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="فحص سيارة جديدة"/>
+
+        <Button
+            android:id="@+id/btnSaved"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="آخر فحص محفوظ"/>
+
+        <LinearLayout
+            android:id="@+id/formContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"/>
+
+        <Button
+            android:id="@+id/btnSave"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="حفظ الفحص"
+            android:visibility="gone"/>
+
+        <Button
+            android:id="@+id/btnPdf"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="إنشاء تقرير PDF"
+            android:visibility="gone"/>
+
+    </LinearLayout>
+</ScrollView>
