@@ -467,17 +467,17 @@ public class MainActivity extends Activity {
         Paint mark = pdfPaint(10.5f);
         String date = new SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(new Date());
         drawCentered(c,text,date,505,200,70);
-        drawRtl(c,text,value("owner"), 550, 242, 360);
+        drawRtl(c,text,value("owner"), 420, 243, 370);
 
         // بيانات السيارة: كل قيمة داخل المستطيل الأبيض المخصص لها.
-        drawCentered(c,text,value("manufacturer"), 420, 272, 72);
-        drawCentered(c,text,value("vehicle_type"), 330, 272, 70);
-        drawCentered(c,text,value("model"), 220, 272, 70);
-        drawCentered(c,text,value("color"), 105, 272, 55);
-        drawCentered(c,text,value("vin"), 420, 291, 72);
-        drawCentered(c,text,value("engine_type"), 330, 291, 70);
-        drawCentered(c,text,value("plate"), 220, 291, 70);
-        drawCentered(c,text,value("drive"), 105, 291, 55);
+        drawCentered(c,text,value("manufacturer"), 423, 269, 65);
+        drawCentered(c,text,value("vehicle_type"), 286, 269, 50);
+        drawCentered(c,text,value("model"), 165, 269, 45);
+        drawCentered(c,text,value("color"), 61, 269, 55);
+        drawCentered(c,text,value("vin"), 423, 289, 65);
+        drawCentered(c,text,value("engine_type"), 286, 289, 50);
+        drawCentered(c,text,value("plate"), 165, 289, 45);
+        drawCentered(c,text,value("drive"), 61, 289, 55);
 
         if (enginePhotoPath != null && !enginePhotoPath.isEmpty() && new File(enginePhotoPath).exists()) {
             Bitmap photo = decodeScaledBitmap(enginePhotoPath, 1600, 1200);
@@ -490,7 +490,7 @@ public class MainActivity extends Activity {
 
         // الأجزاء الداخلية: صح داخل جيد أو سيئ.
         String[] interior = {"الزجاجات","فتحة السقف","مقابض الأبواب","الإضاءة والأنوار","الإشارات (الاصطبات)","الديكورات","الشنطة الخلفية","الأبواب الخلفية","الشاشة أو المسجل","المرايات","المساحات","المقاعد","الطبلون"};
-        float y = 363;
+        float y = 384;
         for (String x : interior) {
             String v = value("int_"+x);
             if ("سليم".equals(v)) tick(c,mark,92,y);
@@ -523,14 +523,14 @@ public class MainActivity extends Activity {
 
         // فحص المحرك - العلامة داخل مربع الاختيار الصحيح.
         drawCentered(c,t,value("engine_kind"),516,112,52);
-        tickChoice(c,m,value("engine_seal"),112,new String[]{"مختوم","مفكوك"},new float[]{467,443});
-        tickChoice(c,m,value("engine_consumption"),112,new String[]{"يوجد","لا يوجد"},new float[]{413,389});
-        tickChoice(c,m,value("engine_sound"),112,new String[]{"يوجد","لا يوجد"},new float[]{365,341});
-        tickChoice(c,m,value("engine_leaks"),112,new String[]{"يوجد","لا يوجد"},new float[]{317,293});
-        tickChoice(c,m,value("engine_perf"),112,new String[]{"ممتاز","جيد","متوسط","ضعيف"},new float[]{270,247,224,201});
-        tickChoice(c,m,value("engine_temp"),112,new String[]{"طبيعي","توجد حرارة"},new float[]{177,153});
-        tickChoice(c,m,value("engine_smoke"),112,new String[]{"يوجد","لا يوجد"},new float[]{129,105});
-        tickChoice(c,m,value("engine_vibration"),112,new String[]{"يوجد","لا يوجد"},new float[]{69,45});
+        tickChoice(c,m,value("engine_seal"),130,new String[]{"مختوم","مفكوك"},new float[]{467,443});
+        tickChoice(c,m,value("engine_consumption"),130,new String[]{"يوجد","لا يوجد"},new float[]{413,389});
+        tickChoice(c,m,value("engine_sound"),130,new String[]{"يوجد","لا يوجد"},new float[]{365,341});
+        tickChoice(c,m,value("engine_leaks"),130,new String[]{"يوجد","لا يوجد"},new float[]{317,293});
+        tickChoice(c,m,value("engine_perf"),130,new String[]{"ممتاز","جيد","متوسط","ضعيف"},new float[]{270,247,224,201});
+        tickChoice(c,m,value("engine_temp"),130,new String[]{"طبيعي","توجد حرارة"},new float[]{177,153});
+        tickChoice(c,m,value("engine_smoke"),130,new String[]{"يوجد","لا يوجد"},new float[]{129,105});
+        tickChoice(c,m,value("engine_vibration"),130,new String[]{"يوجد","لا يوجد"},new float[]{69,45});
         drawWrappedRtl(c,t,value("engine_notes"),570,148,535,11,6);
 
         // ناقل الحركة.
@@ -623,7 +623,19 @@ public class MainActivity extends Activity {
     }
 
     private void tick(Canvas c, Paint p, float x, float y) {
-        drawCentered(c,p,"✓",x,y,18);
+        // Draw a compact check mark geometrically so x/y are the true center of the mark.
+        // This avoids the font-baseline shift that previously pushed ✓ onto labels.
+        Paint q = new Paint(Paint.ANTI_ALIAS_FLAG);
+        q.setColor(Color.BLACK);
+        q.setStyle(Paint.Style.STROKE);
+        q.setStrokeWidth(1.35f);
+        q.setStrokeCap(Paint.Cap.ROUND);
+        q.setStrokeJoin(Paint.Join.ROUND);
+        Path path = new Path();
+        path.moveTo(x - 3.2f, y);
+        path.lineTo(x - 0.8f, y + 2.6f);
+        path.lineTo(x + 4.2f, y - 3.3f);
+        c.drawPath(path, q);
     }
 
     private Paint pdfPaint(float size) {
