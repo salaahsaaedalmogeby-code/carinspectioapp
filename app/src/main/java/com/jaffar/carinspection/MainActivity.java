@@ -5,20 +5,31 @@ import android.os.*;
 import android.content.*;
 import android.graphics.*;
 import android.graphics.pdf.PdfDocument;
+import android.graphics.pdf.PdfRenderer;
 import android.net.Uri;
-import android.provider.Settings;
+import android.provider.MediaStore;
+import android.os.Environment;
 import android.view.*;
 import android.widget.*;
+import androidx.core.content.FileProvider;
+import org.json.JSONObject;
 import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
 public class MainActivity extends Activity {
 
-    LinearLayout form;
-    Button btnSave, btnPdf;
-    Map<String, EditText> textFields = new LinkedHashMap<>();
-    Map<String, Spinner> choiceFields = new LinkedHashMap<>();
+    private static final int REQ_ENGINE_CAMERA = 1201;
+    private LinearLayout form;
+    private Button btnSave, btnPdf;
+    private ImageView enginePhotoPreview;
+    private TextView enginePhotoStatus;
+    private Map<String, EditText> textFields = new LinkedHashMap<>();
+    private Map<String, Spinner> choiceFields = new LinkedHashMap<>();
+    private String currentInspectionId = null;
+    private String enginePhotoPath = "";
+    private String pendingPhotoPath = "";
+
     final String[] condition4 = {"اختر", "ممتاز", "جيد", "متوسط", "ضعيف"};
     final String[] yesNo = {"اختر", "يوجد", "لا يوجد"};
     final String[] goodBad = {"اختر", "جيد", "غير جيد"};
@@ -31,18 +42,16 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(com.jaffar.carinspection.R.layout.activity_main);
-
+        setContentView(R.layout.activity_main);
         form = findViewById(R.id.formContainer);
         btnSave = findViewById(R.id.btnSave);
         btnPdf = findViewById(R.id.btnPdf);
 
-        findViewById(R.id.btnNew).setOnClickListener(v -> buildForm(false));
-        findViewById(R.id.btnSaved).setOnClickListener(v -> buildForm(true));
-        btnSave.setOnClickListener(v -> saveInspection());
+        findViewById(R.id.btnNew).setOnClickListener(v -> newInspection());
+        findViewById(R.id.btnSaved).setOnClickListener(v -> showSavedInspections());
+        btnSave.setOnClickListener(v -> saveInspection(true));
         btnPdf.setOnClickListener(v -> generatePdf());
-
-        buildForm(false);
+        newInspection();
     }
 
     private TextView section(String title) {
@@ -62,13 +71,12 @@ public class MainActivity extends Activity {
         label.setTextSize(15);
         label.setPadding(4, 8, 4, 2);
         form.addView(label);
-
         EditText e = new EditText(this);
         e.setHint(hint);
         e.setTextDirection(View.TEXT_DIRECTION_RTL);
         e.setGravity(Gravity.RIGHT);
-        e.setSingleLine(!hint.contains("ملاحظ"));
-        if (hint.contains("ملاحظ")) e.setMinLines(3);
+        e.setSingleLine(!hint.contains("ملاحظ") && !hint.contains("التجربة"));
+        if (!e.isSingleLine()) e.setMinLines(3);
         form.addView(e, new LinearLayout.LayoutParams(-1, -2));
         textFields.put(key, e);
         return e;
@@ -80,7 +88,6 @@ public class MainActivity extends Activity {
         label.setTextSize(15);
         label.setPadding(4, 8, 4, 2);
         form.addView(label);
-
         Spinner s = new Spinner(this);
         ArrayAdapter<String> a = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, options);
         s.setAdapter(a);
@@ -89,7 +96,14 @@ public class MainActivity extends Activity {
         return s;
     }
 
-    private void buildForm(boolean loadSaved) {
+    private void newInspection() {
+        currentInspectionId = null;
+        enginePhotoPath = "";
+        pendingPhotoPath = "";
+        buildForm();
+    }
+
+    private void buildForm() {
         form.removeAllViews();
         textFields.clear();
         choiceFields.clear();
@@ -119,6 +133,7 @@ public class MainActivity extends Activity {
         addText("interior_notes", "ملاحظات الأجزاء الداخلية");
 
         form.addView(section("4) فحص المحرك"));
+        addEngineCameraControls();
         addText("engine_kind", "نوع المحرك");
         addChoice("engine_seal", "وضع المحرك", new String[]{"اختر","مختوم","مفكوك"});
         addChoice("engine_consumption", "صرفية المحرك", yesNo);
@@ -183,164 +198,441 @@ public class MainActivity extends Activity {
         form.addView(section("12) بيانات التقرير"));
         addText("inspector", "اسم المهندس / الفاحص المختص");
         addText("general_notes", "ملاحظات عامة");
-
-        if (loadSaved) loadInspection();
+        refreshEnginePhotoPreview();
     }
 
-    private void saveInspection() {
-        SharedPreferences.Editor ed = getSharedPreferences("inspection", MODE_PRIVATE).edit();
-        for (Map.Entry<String, EditText> e : textFields.entrySet())
-            ed.putString("t_"+e.getKey(), e.getValue().getText().toString());
-        for (Map.Entry<String, Spinner> e : choiceFields.entrySet())
-            ed.putString("s_"+e.getKey(), e.getValue().getSelectedItem().toString());
-        ed.putString("saved_at", new SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(new Date()));
-        ed.apply();
-        Toast.makeText(this, "تم حفظ الفحص", Toast.LENGTH_SHORT).show();
+    private void addEngineCameraControls() {
+        TextView note = new TextView(this);
+        note.setText("صورة المحرك: تُلتقط أثناء الفحص وتظهر داخل التقرير في الصفحة الأولى.");
+        note.setTextSize(14);
+        note.setGravity(Gravity.RIGHT);
+        note.setPadding(4, 4, 4, 8);
+        form.addView(note);
+
+        enginePhotoPreview = new ImageView(this);
+        enginePhotoPreview.setAdjustViewBounds(true);
+        enginePhotoPreview.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        LinearLayout.LayoutParams imgLp = new LinearLayout.LayoutParams(-1, dp(190));
+        form.addView(enginePhotoPreview, imgLp);
+
+        enginePhotoStatus = new TextView(this);
+        enginePhotoStatus.setGravity(Gravity.CENTER);
+        enginePhotoStatus.setPadding(4,6,4,6);
+        form.addView(enginePhotoStatus);
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER);
+        Button capture = new Button(this);
+        capture.setText("تصوير المحرك بالكاميرا");
+        capture.setOnClickListener(v -> captureEnginePhoto());
+        row.addView(capture, new LinearLayout.LayoutParams(0, -2, 1));
+        Button remove = new Button(this);
+        remove.setText("حذف الصورة");
+        remove.setOnClickListener(v -> {
+            enginePhotoPath = "";
+            pendingPhotoPath = "";
+            refreshEnginePhotoPreview();
+        });
+        row.addView(remove, new LinearLayout.LayoutParams(0, -2, 1));
+        form.addView(row);
     }
 
-    private void loadInspection() {
-        SharedPreferences sp = getSharedPreferences("inspection", MODE_PRIVATE);
-        for (Map.Entry<String, EditText> e : textFields.entrySet())
-            e.getValue().setText(sp.getString("t_"+e.getKey(), ""));
-        for (Map.Entry<String, Spinner> e : choiceFields.entrySet()) {
-            String val = sp.getString("s_"+e.getKey(), "اختر");
-            Spinner s = e.getValue();
-            for (int i=0; i<s.getCount(); i++) {
-                if (s.getItemAtPosition(i).toString().equals(val)) { s.setSelection(i); break; }
+    private int dp(int v) { return (int)(v * getResources().getDisplayMetrics().density + 0.5f); }
+
+    private void captureEnginePhoto() {
+        try {
+            Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            if (intent.resolveActivity(getPackageManager()) == null) {
+                Toast.makeText(this, "لا يوجد تطبيق كاميرا متاح", Toast.LENGTH_LONG).show();
+                return;
             }
+            File dir = new File(getFilesDir(), "engine_photos");
+            if (!dir.exists()) dir.mkdirs();
+            File photo = new File(dir, "engine_" + System.currentTimeMillis() + ".jpg");
+            pendingPhotoPath = photo.getAbsolutePath();
+            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", photo);
+            intent.putExtra(MediaStore.EXTRA_OUTPUT, uri);
+            intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivityForResult(intent, REQ_ENGINE_CAMERA);
+        } catch (Exception e) {
+            showError("تعذر فتح الكاميرا", e);
         }
-        Toast.makeText(this, "تم تحميل آخر فحص محفوظ", Toast.LENGTH_SHORT).show();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_ENGINE_CAMERA) {
+            if (resultCode == RESULT_OK && pendingPhotoPath != null && !pendingPhotoPath.isEmpty()) {
+                enginePhotoPath = pendingPhotoPath;
+                refreshEnginePhotoPreview();
+                saveInspection(false);
+            } else if (pendingPhotoPath != null && !pendingPhotoPath.isEmpty()) {
+                new File(pendingPhotoPath).delete();
+            }
+            pendingPhotoPath = "";
+        }
+    }
+
+    private void refreshEnginePhotoPreview() {
+        if (enginePhotoPreview == null) return;
+        if (enginePhotoPath != null && !enginePhotoPath.isEmpty() && new File(enginePhotoPath).exists()) {
+            Bitmap b = decodeScaledBitmap(enginePhotoPath, 900, 600);
+            enginePhotoPreview.setImageBitmap(b);
+            enginePhotoStatus.setText("تم حفظ صورة المحرك ✓ — يمكنك إعادة التصوير في أي وقت");
+        } else {
+            enginePhotoPreview.setImageDrawable(null);
+            enginePhotoPreview.setBackgroundColor(Color.rgb(230,234,238));
+            enginePhotoStatus.setText("لم يتم تصوير المحرك بعد");
+        }
     }
 
     private String value(String key) {
-        if (textFields.containsKey(key)) return textFields.get(key).getText().toString();
+        if (textFields.containsKey(key)) return textFields.get(key).getText().toString().trim();
         if (choiceFields.containsKey(key)) return choiceFields.get(key).getSelectedItem().toString();
         return "";
     }
 
-    private void drawHeader(Canvas c, Paint p, String pageTitle, int page) {
-        p.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
-        p.setTextAlign(Paint.Align.CENTER);
-        p.setTextSize(20);
-        c.drawText("مركز الجنرال أوتوكار", 298, 42, p);
-        p.setTextSize(16);
-        c.drawText("تقرير الفحص الفني وتقييم أضرار السيارة", 298, 68, p);
-        p.setTextSize(13);
-        c.drawText(pageTitle, 298, 94, p);
-        p.setTextAlign(Paint.Align.LEFT);
-        p.setTextSize(9);
-        c.drawText("صفحة " + page, 30, 820, p);
-        c.drawLine(25, 105, 570, 105, p);
+    private JSONObject collectData() throws Exception {
+        JSONObject obj = new JSONObject();
+        for (Map.Entry<String, EditText> e : textFields.entrySet()) obj.put("t_"+e.getKey(), e.getValue().getText().toString());
+        for (Map.Entry<String, Spinner> e : choiceFields.entrySet()) obj.put("s_"+e.getKey(), e.getValue().getSelectedItem().toString());
+        obj.put("engine_photo", enginePhotoPath == null ? "" : enginePhotoPath);
+        obj.put("saved_at", new SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(new Date()));
+        return obj;
     }
 
-    private float drawKV(Canvas c, Paint p, float y, String label, String val) {
-        p.setTextAlign(Paint.Align.RIGHT);
-        p.setTypeface(Typeface.DEFAULT_BOLD);
-        p.setTextSize(10);
-        c.drawText(label + ":", 555, y, p);
-        p.setTypeface(Typeface.DEFAULT);
-        c.drawText(val == null ? "" : val, 395, y, p);
-        return y + 17;
+    private String saveInspection(boolean showToast) {
+        try {
+            if (currentInspectionId == null || currentInspectionId.isEmpty()) {
+                currentInspectionId = new SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(new Date());
+            }
+            JSONObject obj = collectData();
+            obj.put("id", currentInspectionId);
+            getSharedPreferences("inspection_records", MODE_PRIVATE).edit()
+                    .putString("record_"+currentInspectionId, obj.toString()).apply();
+            addRecordId(currentInspectionId);
+            if (showToast) Toast.makeText(this, "تم حفظ الفحص ويمكن تعديله لاحقاً", Toast.LENGTH_SHORT).show();
+            return currentInspectionId;
+        } catch (Exception e) {
+            showError("تعذر حفظ الفحص", e);
+            return null;
+        }
+    }
+
+    private void addRecordId(String id) {
+        SharedPreferences sp = getSharedPreferences("inspection_records", MODE_PRIVATE);
+        String raw = sp.getString("record_ids", "");
+        List<String> ids = new ArrayList<>();
+        if (!raw.isEmpty()) ids.addAll(Arrays.asList(raw.split(",")));
+        ids.remove(id);
+        ids.add(0, id);
+        StringBuilder sb = new StringBuilder();
+        for (String x : ids) { if (x.trim().isEmpty()) continue; if (sb.length()>0) sb.append(','); sb.append(x); }
+        sp.edit().putString("record_ids", sb.toString()).apply();
+    }
+
+    private List<String> getRecordIds() {
+        String raw = getSharedPreferences("inspection_records", MODE_PRIVATE).getString("record_ids", "");
+        List<String> ids = new ArrayList<>();
+        if (!raw.isEmpty()) for (String x : raw.split(",")) if (!x.trim().isEmpty()) ids.add(x);
+        return ids;
+    }
+
+    private void showSavedInspections() {
+        try {
+            List<String> ids = getRecordIds();
+            if (ids.isEmpty()) { Toast.makeText(this, "لا توجد فحوصات محفوظة", Toast.LENGTH_SHORT).show(); return; }
+            SharedPreferences sp = getSharedPreferences("inspection_records", MODE_PRIVATE);
+            String[] labels = new String[ids.size()];
+            for (int i=0;i<ids.size();i++) {
+                JSONObject o = new JSONObject(sp.getString("record_"+ids.get(i), "{}"));
+                String owner = o.optString("t_owner", "بدون اسم");
+                String plate = o.optString("t_plate", "");
+                String date = o.optString("saved_at", "");
+                labels[i] = owner + (plate.isEmpty()?"":" — " + plate) + "\n" + date;
+            }
+            new AlertDialog.Builder(this)
+                    .setTitle("الفحوصات المحفوظة — اختر فحصاً للتعديل")
+                    .setItems(labels, (d, which) -> loadInspection(ids.get(which)))
+                    .setNegativeButton("إلغاء", null).show();
+        } catch (Exception e) { showError("تعذر فتح الفحوصات المحفوظة", e); }
+    }
+
+    private void loadInspection(String id) {
+        try {
+            String raw = getSharedPreferences("inspection_records", MODE_PRIVATE).getString("record_"+id, null);
+            if (raw == null) return;
+            currentInspectionId = id;
+            JSONObject o = new JSONObject(raw);
+            buildForm();
+            for (Map.Entry<String, EditText> e : textFields.entrySet()) e.getValue().setText(o.optString("t_"+e.getKey(), ""));
+            for (Map.Entry<String, Spinner> e : choiceFields.entrySet()) {
+                String val = o.optString("s_"+e.getKey(), "اختر");
+                Spinner s = e.getValue();
+                for (int i=0;i<s.getCount();i++) if (s.getItemAtPosition(i).toString().equals(val)) { s.setSelection(i); break; }
+            }
+            enginePhotoPath = o.optString("engine_photo", "");
+            refreshEnginePhotoPreview();
+            Toast.makeText(this, "تم فتح الفحص — عدّل البيانات ثم اضغط حفظ الفحص", Toast.LENGTH_LONG).show();
+        } catch (Exception e) { showError("تعذر تحميل الفحص", e); }
     }
 
     private void generatePdf() {
+        PdfDocument outDoc = null;
+        PdfRenderer renderer = null;
+        ParcelFileDescriptor pfd = null;
         try {
-            saveInspection();
-            PdfDocument doc = new PdfDocument();
-            Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-            p.setColor(Color.BLACK);
+            if (saveInspection(false) == null) return;
+            File template = copyTemplateToCache();
+            pfd = ParcelFileDescriptor.open(template, ParcelFileDescriptor.MODE_READ_ONLY);
+            renderer = new PdfRenderer(pfd);
+            outDoc = new PdfDocument();
 
-            // Page 1
-            PdfDocument.Page page1 = doc.startPage(new PdfDocument.PageInfo.Builder(595, 842, 1).create());
-            Canvas c = page1.getCanvas();
-            drawHeader(c,p,"بيانات السيارة وفحص الهيكل والأجزاء الداخلية",1);
-            float y = 125;
-            y=drawKV(c,p,y,"اسم مالك السيارة",value("owner"));
-            y=drawKV(c,p,y,"الشركة المصنعة",value("manufacturer"));
-            y=drawKV(c,p,y,"نوع المركبة",value("vehicle_type"));
-            y=drawKV(c,p,y,"الموديل",value("model"));
-            y=drawKV(c,p,y,"اللون",value("color"));
-            y=drawKV(c,p,y,"رقم الهيكل",value("vin"));
-            y=drawKV(c,p,y,"نوع المحرك",value("engine_type"));
-            y=drawKV(c,p,y,"رقم اللوحة",value("plate"));
-            y=drawKV(c,p,y,"الدفع",value("drive"));
-            y+=12;
-            y=drawKV(c,p,y,"القاعدة",value("base"));
-            y=drawKV(c,p,y,"البودي",value("body"));
-            y=drawKV(c,p,y,"ملاحظات الهيكل والبودي",value("body_notes"));
-            String[] interior = {"الزجاجات","فتحة السقف","مقابض الأبواب","الإضاءة والأنوار","الإشارات (الاصطبات)","الديكورات","الشنطة الخلفية","الأبواب الخلفية","الشاشة أو المسجل","المرايات","المساحات","المقاعد","الطبلون"};
-            for (String x : interior) y=drawKV(c,p,y,x,value("int_"+x));
-            y=drawKV(c,p,y,"ملاحظات الداخلية",value("interior_notes"));
-            doc.finishPage(page1);
+            for (int i=0; i<renderer.getPageCount(); i++) {
+                PdfRenderer.Page rp = renderer.openPage(i);
+                int pageW = rp.getWidth();
+                int pageH = rp.getHeight();
+                int renderScale = 2;
+                Bitmap bg = Bitmap.createBitmap(pageW*renderScale, pageH*renderScale, Bitmap.Config.ARGB_8888);
+                bg.eraseColor(Color.WHITE);
+                rp.render(bg, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT);
+                rp.close();
 
-            // Page 2
-            PdfDocument.Page page2 = doc.startPage(new PdfDocument.PageInfo.Builder(595, 842, 2).create());
-            c = page2.getCanvas();
-            drawHeader(c,p,"فحص المحرك وناقل الحركة والدبل والدفرنس",2);
-            y=125;
-            String[][] page2Fields = {
-                {"نوع المحرك","engine_kind"},{"وضع المحرك","engine_seal"},{"صرفية المحرك","engine_consumption"},
-                {"أصوات في المحرك","engine_sound"},{"تهريبات في المحرك","engine_leaks"},{"أداء المحرك","engine_perf"},
-                {"حرارة المحرك","engine_temp"},{"دخان أسود","engine_smoke"},{"رجفة في المحرك","engine_vibration"},
-                {"ملاحظات المحرك","engine_notes"},
-                {"نوع ناقل الحركة","trans_type"},{"حالة الاسبيت","clutch"},{"وضع التعشيق","shifting"},{"أصوات في الاسبيت","trans_sound"},
-                {"تهريبات في الاسبيت","trans_leaks"},{"أداء ناقل الحركة","trans_perf"},{"ملاحظات ناقل الحركة","trans_notes"},
-                {"نوع الدبل","transfer_type"},{"حالة الدبل","transfer_seal"},{"تعشيق الدبل","transfer_shift"},{"أصوات في الدبل","transfer_sound"},
-                {"تهريبات في الدبل","transfer_leaks"},{"صرة الدوران","shaft"},{"ملاحظات الدبل","transfer_notes"},
-                {"الدفرنس الأمامي - الحالة","front_diff_state"},{"الدفرنس الأمامي - الكوارين","front_diff_gears"},
-                {"الدفرنس الأمامي - الأصوات","front_diff_sound"},{"الدفرنس الأمامي - التهريبات","front_diff_leaks"},{"الدفرنس الأمامي - العكوس","front_axles"},
-                {"الدفرنس الخلفي - الحالة","rear_diff_state"},{"الدفرنس الخلفي - الكوارين","rear_diff_gears"},
-                {"الدفرنس الخلفي - الأصوات","rear_diff_sound"},{"الدفرنس الخلفي - التهريبات","rear_diff_leaks"},{"الدفرنس الخلفي - العكوس","rear_axles"},
-                {"ملاحظات الدفرنس","diff_notes"}
-            };
-            for (String[] f: page2Fields) y=drawKV(c,p,y,f[0],value(f[1]));
-            doc.finishPage(page2);
+                PdfDocument.Page op = outDoc.startPage(new PdfDocument.PageInfo.Builder(pageW, pageH, i+1).create());
+                Canvas c = op.getCanvas();
+                c.drawBitmap(bg, null, new RectF(0,0,pageW,pageH), null);
+                bg.recycle();
+                if (i == 0) overlayPage1(c, pageW, pageH);
+                if (i == 1) overlayPage2(c, pageW, pageH);
+                if (i == 2) overlayPage3(c, pageW, pageH);
+                outDoc.finishPage(op);
+            }
 
-            // Page 3
-            PdfDocument.Page page3 = doc.startPage(new PdfDocument.PageInfo.Builder(595, 842, 3).create());
-            c = page3.getCanvas();
-            drawHeader(c,p,"التوجيه والتعليق والإطارات والتجربة وفحص الكمبيوتر",3);
-            y=125;
-            String[] suspension = {"مجموعة الدركسون","الذراعات","المقصات","المساعدات","الكعكات","الفرامل","السبرنجه","عمود التوازن","أخرى"};
-            for (String x : suspension) y=drawKV(c,p,y,x,value("sus_"+x));
-            y=drawKV(c,p,y,"ملاحظات التوجيه والتعليق",value("suspension_notes"));
-            y+=8;
-            y=drawKV(c,p,y,"الإطار الأمامي الأيسر",value("tire_fl"));
-            y=drawKV(c,p,y,"الإطار الأمامي الأيمن",value("tire_fr"));
-            y=drawKV(c,p,y,"الإطار الخلفي الأيسر",value("tire_rl"));
-            y=drawKV(c,p,y,"الإطار الخلفي الأيمن",value("tire_rr"));
-            y+=8;
-            y=drawKV(c,p,y,"التجربة الميدانية",value("road_test"));
-            String[] lights = {"Check Engine","زيت المحرك","حرارة المحرك","بطارية","ABS","Brake","ESP","T-BELT","4WD","Airbag","ضغط الإطارات","مفتاح/Immobilizer","صيانة/Record maint"};
-            for (String x : lights) y=drawKV(c,p,y,x,value("light_"+x));
-            y=drawKV(c,p,y,"ملاحظات الكمبيوتر",value("computer_notes"));
-            y=drawKV(c,p,y,"الفاحص المختص",value("inspector"));
-            y=drawKV(c,p,y,"ملاحظات عامة",value("general_notes"));
-            doc.finishPage(page3);
-
-            File dir = new File(getExternalFilesDir(null), "Reports");
-            if (!dir.exists()) dir.mkdirs();
-            String plate = value("plate").replaceAll("[^\\p{L}\\p{N}_-]", "_");
+            String plate = safeName(value("plate"));
             if (plate.isEmpty()) plate = "car";
             String time = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
-            File file = new File(dir, "Inspection_"+plate+"_"+time+".pdf");
-            FileOutputStream out = new FileOutputStream(file);
-            doc.writeTo(out);
-            out.close();
-            doc.close();
+            String fileName = "Inspection_" + plate + "_" + time + ".pdf";
+            String savedPath = savePdfToDownloads(outDoc, fileName);
+            outDoc.close(); outDoc = null;
 
             new AlertDialog.Builder(this)
-                .setTitle("تم إنشاء التقرير")
-                .setMessage("تم حفظ ملف PDF في:\n" + file.getAbsolutePath())
-                .setPositiveButton("حسناً", null)
-                .show();
-
+                    .setTitle("تم إنشاء التقرير")
+                    .setMessage("تم إنشاء التقرير بنفس قالب الفحص الأصلي وحفظه في:\n" + savedPath + "\n\nيمكنك تعديل هذا الفحص لاحقاً من زر: الفحوصات المحفوظة.")
+                    .setPositiveButton("حسناً", null).show();
         } catch (Exception e) {
-            new AlertDialog.Builder(this)
-                .setTitle("تعذر إنشاء التقرير")
-                .setMessage(e.toString())
-                .setPositiveButton("حسناً", null)
-                .show();
+            showError("تعذر إنشاء التقرير", e);
+        } finally {
+            try { if (outDoc != null) outDoc.close(); } catch(Exception ignored) {}
+            try { if (renderer != null) renderer.close(); } catch(Exception ignored) {}
+            try { if (pfd != null) pfd.close(); } catch(Exception ignored) {}
         }
+    }
+
+    private File copyTemplateToCache() throws Exception {
+        File f = new File(getCacheDir(), "inspection_template.pdf");
+        InputStream in = getResources().openRawResource(R.raw.inspection_template);
+        FileOutputStream out = new FileOutputStream(f);
+        byte[] buf = new byte[8192]; int n;
+        while ((n=in.read(buf))>0) out.write(buf,0,n);
+        in.close(); out.close();
+        return f;
+    }
+
+    private String savePdfToDownloads(PdfDocument doc, String fileName) throws Exception {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf");
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/تقارير فحص السيارات");
+            Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) throw new IOException("تعذر إنشاء ملف في مجلد التنزيلات");
+            OutputStream out = getContentResolver().openOutputStream(uri);
+            if (out == null) throw new IOException("تعذر فتح ملف التقرير");
+            doc.writeTo(out); out.close();
+            return "Download/تقارير فحص السيارات/" + fileName;
+        } else {
+            File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "تقارير فحص السيارات");
+            if (!dir.exists() && !dir.mkdirs()) throw new IOException("تعذر إنشاء مجلد التقارير");
+            File file = new File(dir, fileName);
+            FileOutputStream out = new FileOutputStream(file);
+            doc.writeTo(out); out.close();
+            return file.getAbsolutePath();
+        }
+    }
+
+    private void overlayPage1(Canvas c, int w, int h) {
+        Paint p = pdfPaint(9);
+        // Date
+        drawCentered(c,p,new SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(new Date()), 505, 198, 70);
+        // Owner and vehicle table
+        drawRtl(c,p,value("owner"), 440, 241, 310);
+        drawCentered(c,p,value("manufacturer"), 420, 267, 92);
+        drawCentered(c,p,value("vehicle_type"), 330, 267, 92);
+        drawCentered(c,p,value("model"), 220, 267, 92);
+        drawCentered(c,p,value("color"), 105, 267, 80);
+        drawCentered(c,p,value("vin"), 420, 291, 92);
+        drawCentered(c,p,value("engine_type"), 330, 291, 92);
+        drawCentered(c,p,value("plate"), 220, 291, 92);
+        drawCentered(c,p,value("drive"), 105, 291, 80);
+
+        // Engine photo replaces the approximate car illustration on page 1 when available.
+        if (enginePhotoPath != null && !enginePhotoPath.isEmpty() && new File(enginePhotoPath).exists()) {
+            Bitmap photo = decodeScaledBitmap(enginePhotoPath, 1600, 1200);
+            if (photo != null) {
+                RectF box = new RectF(208, 322, 553, 581);
+                drawBitmapCenterCrop(c, photo, box);
+                Paint border = new Paint(Paint.ANTI_ALIAS_FLAG); border.setStyle(Paint.Style.STROKE); border.setStrokeWidth(1.2f); border.setColor(Color.DKGRAY);
+                c.drawRect(box, border);
+                photo.recycle();
+            }
+        }
+
+        // Add selected body/base values in their notes zones so the exact template remains intact.
+        p = pdfPaint(8);
+        drawRtl(c,p,"النتيجة: " + cleanChoice(value("base")) + "   |   " + value("body_notes"), 295, 630, 250);
+        drawRtl(c,p,"النتيجة: " + cleanChoice(value("body")), 295, 682, 250);
+        drawRtl(c,p,value("general_notes"), 520, 719, 450);
+
+        // Interior states inside the large left table (compact symbols).
+        String[] interior = {"الزجاجات","فتحة السقف","مقابض الأبواب","الإضاءة والأنوار","الإشارات (الاصطبات)","الديكورات","الشنطة الخلفية","الأبواب الخلفية","الشاشة أو المسجل","المرايات","المساحات","المقاعد","الطبلون"};
+        float y = 385;
+        Paint mark = pdfPaint(8);
+        for (String x : interior) {
+            String v = value("int_"+x);
+            if ("سليم".equals(v)) drawCentered(c,mark,"✓",69,y,18);
+            else if ("غير سليم".equals(v)) drawCentered(c,mark,"✓",110,y,18);
+            y += 20.2f;
+        }
+    }
+
+    private void overlayPage2(Canvas c, int w, int h) {
+        Paint p = pdfPaint(7.5f);
+        // Notes areas are intentionally used for readable summaries while preserving the original table design.
+        String engine = "نوع: "+cleanChoice(value("engine_kind"))+"  | وضع: "+cleanChoice(value("engine_seal"))+"  | صرفية: "+cleanChoice(value("engine_consumption"))+"  | أصوات: "+cleanChoice(value("engine_sound"))+"  | تهريب: "+cleanChoice(value("engine_leaks"))+"  | أداء: "+cleanChoice(value("engine_perf"))+"  | حرارة: "+cleanChoice(value("engine_temp"))+"  | دخان: "+cleanChoice(value("engine_smoke"))+"  | رجفة: "+cleanChoice(value("engine_vibration"));
+        drawWrappedRtl(c,p,engine,560,132,520,12,3);
+        drawWrappedRtl(c,p,value("engine_notes"),560,170,520,12,3);
+
+        String trans = "النوع: "+cleanChoice(value("trans_type"))+" | الاسبيت: "+cleanChoice(value("clutch"))+" | التعشيق: "+cleanChoice(value("shifting"))+" | أصوات: "+cleanChoice(value("trans_sound"))+" | تهريب: "+cleanChoice(value("trans_leaks"))+" | الأداء: "+cleanChoice(value("trans_perf"));
+        drawWrappedRtl(c,p,trans,560,306,520,12,3);
+        drawWrappedRtl(c,p,value("trans_notes"),560,340,520,12,2);
+
+        String transfer = "النوع: "+cleanChoice(value("transfer_type"))+" | الحالة: "+cleanChoice(value("transfer_seal"))+" | التعشيق: "+cleanChoice(value("transfer_shift"))+" | أصوات: "+cleanChoice(value("transfer_sound"))+" | تهريب: "+cleanChoice(value("transfer_leaks"))+" | صرة الدوران: "+cleanChoice(value("shaft"));
+        drawWrappedRtl(c,p,transfer,560,470,520,12,3);
+        drawWrappedRtl(c,p,value("transfer_notes"),560,504,520,12,2);
+
+        String diff = "أمامي: حالة "+cleanChoice(value("front_diff_state"))+"، كوارين "+cleanChoice(value("front_diff_gears"))+"، أصوات "+cleanChoice(value("front_diff_sound"))+"، تهريب "+cleanChoice(value("front_diff_leaks"))+"، عكوس "+cleanChoice(value("front_axles"))+"   | خلفي: حالة "+cleanChoice(value("rear_diff_state"))+"، كوارين "+cleanChoice(value("rear_diff_gears"))+"، أصوات "+cleanChoice(value("rear_diff_sound"))+"، تهريب "+cleanChoice(value("rear_diff_leaks"))+"، عكوس "+cleanChoice(value("rear_axles"));
+        drawWrappedRtl(c,p,diff,560,680,520,12,4);
+        drawWrappedRtl(c,p,value("diff_notes"),560,728,520,12,3);
+    }
+
+    private void overlayPage3(Canvas c, int w, int h) {
+        Paint p = pdfPaint(7.5f);
+        String[] suspension = {"مجموعة الدركسون","الذراعات","المقصات","المساعدات","الكعكات","الفرامل","السبرنجه","عمود التوازن","أخرى"};
+        float y = 80;
+        for (String x : suspension) {
+            String v = value("sus_"+x);
+            if (!"اختر".equals(v)) drawRtl(c,p,v,420,y,90);
+            y += 25.3f;
+        }
+        drawWrappedRtl(c,p,value("suspension_notes"),560,330,520,12,3);
+
+        // Tire condition near each tire position.
+        Paint tp = pdfPaint(9);
+        drawCentered(c,tp,cleanChoice(value("tire_fl")),135,113,70);
+        drawCentered(c,tp,cleanChoice(value("tire_fr")),260,113,70);
+        drawCentered(c,tp,cleanChoice(value("tire_rl")),135,250,70);
+        drawCentered(c,tp,cleanChoice(value("tire_rr")),260,250,70);
+
+        drawWrappedRtl(c,p,value("road_test"),560,390,520,13,4);
+
+        String[] lights = {"Check Engine","زيت المحرك","حرارة المحرك","بطارية","ABS","Brake","ESP","T-BELT","4WD","Airbag","ضغط الإطارات","مفتاح/Immobilizer","صيانة/Record maint"};
+        StringBuilder sb = new StringBuilder();
+        for (String x : lights) {
+            String v = value("light_"+x);
+            if ("توجد إشارة".equals(v)) { if (sb.length()>0) sb.append("، "); sb.append(x); }
+        }
+        drawWrappedRtl(c,p,"الإشارات الموجودة: " + (sb.length()==0?"لا توجد إشارات مسجلة":sb.toString()),560,610,270,12,6);
+        drawWrappedRtl(c,p,value("computer_notes"),560,690,270,12,4);
+        drawRtl(c,p,value("inspector"),220,680,150);
+    }
+
+    private Paint pdfPaint(float size) {
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+        p.setColor(Color.BLACK); p.setTextSize(size); p.setTypeface(Typeface.create("sans", Typeface.NORMAL));
+        return p;
+    }
+
+    private String cleanChoice(String s) { return (s==null || s.equals("اختر")) ? "" : s; }
+
+    private void drawCentered(Canvas c, Paint p, String text, float cx, float y, float maxWidth) {
+        if (text == null) text = "";
+        text = fitText(p,text,maxWidth);
+        p.setTextAlign(Paint.Align.CENTER);
+        c.drawText(text,cx,y,p);
+    }
+
+    private void drawRtl(Canvas c, Paint p, String text, float right, float y, float maxWidth) {
+        if (text == null || text.trim().isEmpty()) return;
+        text = fitText(p,text,maxWidth);
+        p.setTextAlign(Paint.Align.RIGHT);
+        c.drawText(text,right,y,p);
+    }
+
+    private String fitText(Paint p, String text, float maxWidth) {
+        if (p.measureText(text) <= maxWidth) return text;
+        String ell = "…";
+        int n = text.length();
+        while (n>1 && p.measureText(text.substring(0,n)+ell)>maxWidth) n--;
+        return text.substring(0,Math.max(1,n))+ell;
+    }
+
+    private void drawWrappedRtl(Canvas c, Paint p, String text, float right, float y, float maxWidth, float lineHeight, int maxLines) {
+        if (text == null || text.trim().isEmpty()) return;
+        String[] words = text.trim().split("\\s+");
+        List<String> lines = new ArrayList<>();
+        String cur = "";
+        for (String word : words) {
+            String test = cur.isEmpty()?word:cur+" "+word;
+            if (p.measureText(test)<=maxWidth) cur=test;
+            else { if(!cur.isEmpty()) lines.add(cur); cur=word; if(lines.size()>=maxLines) break; }
+        }
+        if (lines.size()<maxLines && !cur.isEmpty()) lines.add(cur);
+        p.setTextAlign(Paint.Align.RIGHT);
+        for (int i=0;i<lines.size() && i<maxLines;i++) c.drawText(lines.get(i), right, y+i*lineHeight, p);
+    }
+
+    private void drawBitmapCenterCrop(Canvas c, Bitmap b, RectF dst) {
+        float srcRatio = b.getWidth()/(float)b.getHeight();
+        float dstRatio = dst.width()/dst.height();
+        Rect src;
+        if (srcRatio > dstRatio) {
+            int newW = (int)(b.getHeight()*dstRatio);
+            int left = (b.getWidth()-newW)/2;
+            src = new Rect(left,0,left+newW,b.getHeight());
+        } else {
+            int newH = (int)(b.getWidth()/dstRatio);
+            int top = (b.getHeight()-newH)/2;
+            src = new Rect(0,top,b.getWidth(),top+newH);
+        }
+        c.drawBitmap(b,src,dst,null);
+    }
+
+    private Bitmap decodeScaledBitmap(String path, int reqW, int reqH) {
+        try {
+            BitmapFactory.Options o = new BitmapFactory.Options(); o.inJustDecodeBounds=true; BitmapFactory.decodeFile(path,o);
+            int sample=1; while(o.outWidth/sample>reqW*2 || o.outHeight/sample>reqH*2) sample*=2;
+            o.inJustDecodeBounds=false; o.inSampleSize=sample; return BitmapFactory.decodeFile(path,o);
+        } catch(Exception e) { return null; }
+    }
+
+    private String safeName(String s) {
+        if (s == null) return "";
+        return s.replaceAll("[^\\p{L}\\p{N}_-]", "_");
+    }
+
+    private void showError(String title, Exception e) {
+        new AlertDialog.Builder(this).setTitle(title).setMessage(e.toString()).setPositiveButton("حسناً",null).show();
     }
 }
