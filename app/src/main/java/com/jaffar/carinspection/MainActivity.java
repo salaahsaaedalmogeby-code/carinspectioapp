@@ -463,99 +463,167 @@ public class MainActivity extends Activity {
     }
 
     private void overlayPage1(Canvas c, int w, int h) {
-        Paint p = pdfPaint(9);
-        // Date
-        drawCentered(c,p,new SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(new Date()), 505, 198, 70);
-        // Owner and vehicle table
-        drawRtl(c,p,value("owner"), 440, 241, 310);
-        drawCentered(c,p,value("manufacturer"), 420, 267, 92);
-        drawCentered(c,p,value("vehicle_type"), 330, 267, 92);
-        drawCentered(c,p,value("model"), 220, 267, 92);
-        drawCentered(c,p,value("color"), 105, 267, 80);
-        drawCentered(c,p,value("vin"), 420, 291, 92);
-        drawCentered(c,p,value("engine_type"), 330, 291, 92);
-        drawCentered(c,p,value("plate"), 220, 291, 92);
-        drawCentered(c,p,value("drive"), 105, 291, 80);
+        Paint text = pdfPaint(8.5f);
+        Paint mark = pdfPaint(10.5f);
+        String date = new SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(new Date());
+        drawCentered(c,text,date,505,200,70);
+        drawRtl(c,text,value("owner"), 550, 242, 360);
 
-        // Engine photo replaces the approximate car illustration on page 1 when available.
+        // بيانات السيارة: كل قيمة داخل المستطيل الأبيض المخصص لها.
+        drawCentered(c,text,value("manufacturer"), 420, 272, 72);
+        drawCentered(c,text,value("vehicle_type"), 330, 272, 70);
+        drawCentered(c,text,value("model"), 220, 272, 70);
+        drawCentered(c,text,value("color"), 105, 272, 55);
+        drawCentered(c,text,value("vin"), 420, 291, 72);
+        drawCentered(c,text,value("engine_type"), 330, 291, 70);
+        drawCentered(c,text,value("plate"), 220, 291, 70);
+        drawCentered(c,text,value("drive"), 105, 291, 55);
+
         if (enginePhotoPath != null && !enginePhotoPath.isEmpty() && new File(enginePhotoPath).exists()) {
             Bitmap photo = decodeScaledBitmap(enginePhotoPath, 1600, 1200);
             if (photo != null) {
-                RectF box = new RectF(208, 322, 553, 581);
+                RectF box = new RectF(198, 322, 568, 584);
                 drawBitmapCenterCrop(c, photo, box);
-                Paint border = new Paint(Paint.ANTI_ALIAS_FLAG); border.setStyle(Paint.Style.STROKE); border.setStrokeWidth(1.2f); border.setColor(Color.DKGRAY);
-                c.drawRect(box, border);
                 photo.recycle();
             }
         }
 
-        // Add selected body/base values in their notes zones so the exact template remains intact.
-        p = pdfPaint(8);
-        drawRtl(c,p,"النتيجة: " + cleanChoice(value("base")) + "   |   " + value("body_notes"), 295, 630, 250);
-        drawRtl(c,p,"النتيجة: " + cleanChoice(value("body")), 295, 682, 250);
-        drawRtl(c,p,value("general_notes"), 520, 719, 450);
-
-        // Interior states inside the large left table (compact symbols).
+        // الأجزاء الداخلية: صح داخل جيد أو سيئ.
         String[] interior = {"الزجاجات","فتحة السقف","مقابض الأبواب","الإضاءة والأنوار","الإشارات (الاصطبات)","الديكورات","الشنطة الخلفية","الأبواب الخلفية","الشاشة أو المسجل","المرايات","المساحات","المقاعد","الطبلون"};
-        float y = 385;
-        Paint mark = pdfPaint(8);
+        float y = 363;
         for (String x : interior) {
             String v = value("int_"+x);
-            if ("سليم".equals(v)) drawCentered(c,mark,"✓",69,y,18);
-            else if ("غير سليم".equals(v)) drawCentered(c,mark,"✓",110,y,18);
-            y += 20.2f;
+            if ("سليم".equals(v)) tick(c,mark,92,y);
+            else if ("غير سليم".equals(v)) tick(c,mark,51,y);
+            y += 16.6f;
         }
+
+        // القاعدة: المربعات من اليمين إلى اليسار.
+        String base = value("base");
+        if ("سليم".equals(base)) tick(c,mark,477,615);
+        else if ("رش كبير".equals(base)) tick(c,mark,443,615);
+        else if ("رش خفيف".equals(base)) tick(c,mark,409,615);
+        else if ("سمكرة كبير".equals(base)) tick(c,mark,373,615);
+        else if ("سمكرة خفيف".equals(base)) tick(c,mark,334,615);
+        drawWrappedRtl(c,pdfPaint(7.5f),value("body_notes"),294,613,250,11,2);
+
+        String body = value("body");
+        if ("سليم".equals(body)) tick(c,mark,477,667);
+        else if ("مقلوب كامل".equals(body)) tick(c,mark,443,667);
+        else if ("قلبة جانبية".equals(body)) tick(c,mark,409,667);
+        else if ("مرشوش كامل".equals(body)) tick(c,mark,373,667);
+        else if ("رشة جزئية (تلقيطات)".equals(body)) tick(c,mark,334,667);
+
+        drawWrappedRtl(c,pdfPaint(8),value("general_notes"),520,724,440,12,4);
     }
 
     private void overlayPage2(Canvas c, int w, int h) {
-        Paint p = pdfPaint(7.5f);
-        // Notes areas are intentionally used for readable summaries while preserving the original table design.
-        String engine = "نوع: "+cleanChoice(value("engine_kind"))+"  | وضع: "+cleanChoice(value("engine_seal"))+"  | صرفية: "+cleanChoice(value("engine_consumption"))+"  | أصوات: "+cleanChoice(value("engine_sound"))+"  | تهريب: "+cleanChoice(value("engine_leaks"))+"  | أداء: "+cleanChoice(value("engine_perf"))+"  | حرارة: "+cleanChoice(value("engine_temp"))+"  | دخان: "+cleanChoice(value("engine_smoke"))+"  | رجفة: "+cleanChoice(value("engine_vibration"));
-        drawWrappedRtl(c,p,engine,560,132,520,12,3);
-        drawWrappedRtl(c,p,value("engine_notes"),560,170,520,12,3);
+        Paint m = pdfPaint(9.5f);
+        Paint t = pdfPaint(7.2f);
 
-        String trans = "النوع: "+cleanChoice(value("trans_type"))+" | الاسبيت: "+cleanChoice(value("clutch"))+" | التعشيق: "+cleanChoice(value("shifting"))+" | أصوات: "+cleanChoice(value("trans_sound"))+" | تهريب: "+cleanChoice(value("trans_leaks"))+" | الأداء: "+cleanChoice(value("trans_perf"));
-        drawWrappedRtl(c,p,trans,560,306,520,12,3);
-        drawWrappedRtl(c,p,value("trans_notes"),560,340,520,12,2);
+        // فحص المحرك - العلامة داخل مربع الاختيار الصحيح.
+        drawCentered(c,t,value("engine_kind"),516,112,52);
+        tickChoice(c,m,value("engine_seal"),112,new String[]{"مختوم","مفكوك"},new float[]{467,443});
+        tickChoice(c,m,value("engine_consumption"),112,new String[]{"يوجد","لا يوجد"},new float[]{413,389});
+        tickChoice(c,m,value("engine_sound"),112,new String[]{"يوجد","لا يوجد"},new float[]{365,341});
+        tickChoice(c,m,value("engine_leaks"),112,new String[]{"يوجد","لا يوجد"},new float[]{317,293});
+        tickChoice(c,m,value("engine_perf"),112,new String[]{"ممتاز","جيد","متوسط","ضعيف"},new float[]{270,247,224,201});
+        tickChoice(c,m,value("engine_temp"),112,new String[]{"طبيعي","توجد حرارة"},new float[]{177,153});
+        tickChoice(c,m,value("engine_smoke"),112,new String[]{"يوجد","لا يوجد"},new float[]{129,105});
+        tickChoice(c,m,value("engine_vibration"),112,new String[]{"يوجد","لا يوجد"},new float[]{69,45});
+        drawWrappedRtl(c,t,value("engine_notes"),570,148,535,11,6);
 
-        String transfer = "النوع: "+cleanChoice(value("transfer_type"))+" | الحالة: "+cleanChoice(value("transfer_seal"))+" | التعشيق: "+cleanChoice(value("transfer_shift"))+" | أصوات: "+cleanChoice(value("transfer_sound"))+" | تهريب: "+cleanChoice(value("transfer_leaks"))+" | صرة الدوران: "+cleanChoice(value("shaft"));
-        drawWrappedRtl(c,p,transfer,560,470,520,12,3);
-        drawWrappedRtl(c,p,value("transfer_notes"),560,504,520,12,2);
+        // ناقل الحركة.
+        tickChoice(c,m,value("trans_type"),321,new String[]{"أوتوماتيك","عادي"},new float[]{515,486});
+        tickChoice(c,m,value("clutch"),321,new String[]{"مختوم","مفكوك"},new float[]{443,416});
+        tickChoice(c,m,value("shifting"),321,new String[]{"جيد","غير جيد"},new float[]{374,344});
+        tickChoice(c,m,value("trans_sound"),321,new String[]{"يوجد","لا يوجد"},new float[]{303,276});
+        tickChoice(c,m,value("trans_leaks"),321,new String[]{"يوجد","لا يوجد"},new float[]{241,214});
+        tickChoice(c,m,value("trans_perf"),321,new String[]{"ممتاز","جيد","متوسط","ضعيف"},new float[]{177,144,111,78});
+        drawWrappedRtl(c,t,value("trans_notes"),570,354,535,11,4);
 
-        String diff = "أمامي: حالة "+cleanChoice(value("front_diff_state"))+"، كوارين "+cleanChoice(value("front_diff_gears"))+"، أصوات "+cleanChoice(value("front_diff_sound"))+"، تهريب "+cleanChoice(value("front_diff_leaks"))+"، عكوس "+cleanChoice(value("front_axles"))+"   | خلفي: حالة "+cleanChoice(value("rear_diff_state"))+"، كوارين "+cleanChoice(value("rear_diff_gears"))+"، أصوات "+cleanChoice(value("rear_diff_sound"))+"، تهريب "+cleanChoice(value("rear_diff_leaks"))+"، عكوس "+cleanChoice(value("rear_axles"));
-        drawWrappedRtl(c,p,diff,560,680,520,12,4);
-        drawWrappedRtl(c,p,value("diff_notes"),560,728,520,12,3);
+        // الدبل.
+        tickChoice(c,m,value("transfer_type"),479,new String[]{"ذاتي","يدوي"},new float[]{515,488});
+        tickChoice(c,m,value("transfer_seal"),479,new String[]{"مختوم","مفكوك"},new float[]{445,414});
+        tickChoice(c,m,value("transfer_shift"),479,new String[]{"جيد","غير جيد"},new float[]{376,345});
+        tickChoice(c,m,value("transfer_sound"),479,new String[]{"يوجد","لا يوجد"},new float[]{306,276});
+        tickChoice(c,m,value("transfer_leaks"),479,new String[]{"يوجد","لا يوجد"},new float[]{240,213});
+        tickChoice(c,m,value("shaft"),479,new String[]{"جيد","غير جيد"},new float[]{143,79});
+        drawWrappedRtl(c,t,value("transfer_notes"),570,512,535,11,3);
+
+        // الدفرنس الأمامي والخلفي.
+        drawDiffRow(c,m,589,"front_diff_state","front_diff_gears","front_diff_sound","front_diff_leaks","front_axles");
+        drawDiffRow(c,m,625,"rear_diff_state","rear_diff_gears","rear_diff_sound","rear_diff_leaks","rear_axles");
+        drawWrappedRtl(c,t,value("diff_notes"),570,681,535,11,7);
+    }
+
+    private void drawDiffRow(Canvas c, Paint m, float y, String state, String gears, String sound, String leaks, String axles) {
+        tickChoice(c,m,value(state),y,new String[]{"جيد","غير جيد"},new float[]{438,405});
+        tickChoice(c,m,value(gears),y,new String[]{"جيد","غير جيد"},new float[]{368,336});
+        tickChoice(c,m,value(sound),y,new String[]{"يوجد","لا يوجد"},new float[]{300,269});
+        tickChoice(c,m,value(leaks),y,new String[]{"يوجد","لا يوجد"},new float[]{230,198});
+        tickChoice(c,m,value(axles),y,new String[]{"جيد","غير جيد"},new float[]{132,65});
     }
 
     private void overlayPage3(Canvas c, int w, int h) {
-        Paint p = pdfPaint(7.5f);
+        Paint m = pdfPaint(9.5f);
+        Paint t = pdfPaint(7.5f);
+
+        // التوجيه والتعليق: جيد/غير جيد داخل العمود الصحيح.
         String[] suspension = {"مجموعة الدركسون","الذراعات","المقصات","المساعدات","الكعكات","الفرامل","السبرنجه","عمود التوازن","أخرى"};
-        float y = 80;
+        float y = 129;
         for (String x : suspension) {
             String v = value("sus_"+x);
-            if (!"اختر".equals(v)) drawRtl(c,p,v,420,y,90);
-            y += 25.3f;
+            if ("جيد".equals(v)) tick(c,m,444,y);
+            else if ("غير جيد".equals(v)) tick(c,m,394,y);
+            y += 24.7f;
         }
-        drawWrappedRtl(c,p,value("suspension_notes"),560,330,520,12,3);
+        drawWrappedRtl(c,t,value("suspension_notes"),360,350,75,11,3);
 
-        // Tire condition near each tire position.
-        Paint tp = pdfPaint(9);
-        drawCentered(c,tp,cleanChoice(value("tire_fl")),135,113,70);
-        drawCentered(c,tp,cleanChoice(value("tire_fr")),260,113,70);
-        drawCentered(c,tp,cleanChoice(value("tire_rl")),135,250,70);
-        drawCentered(c,tp,cleanChoice(value("tire_rr")),260,250,70);
+        // الإطارات: علامة صح داخل جيد أو تالف لكل إطار.
+        tireTick(c,m,value("tire_fl"),89,145);
+        tireTick(c,m,value("tire_fr"),187,145);
+        tireTick(c,m,value("tire_rl"),89,292);
+        tireTick(c,m,value("tire_rr"),187,292);
 
-        drawWrappedRtl(c,p,value("road_test"),560,390,520,13,4);
+        drawWrappedRtl(c,pdfPaint(8),value("road_test"),555,431,360,13,3);
 
+        // إشارات الطبلون: كل إشارة لها مربع أبيض ملاصق للصورة؛ نضع ✓ فيه عند وجود الإشارة.
         String[] lights = {"Check Engine","زيت المحرك","حرارة المحرك","بطارية","ABS","Brake","ESP","T-BELT","4WD","Airbag","ضغط الإطارات","مفتاح/Immobilizer","صيانة/Record maint"};
-        StringBuilder sb = new StringBuilder();
+        Map<String,float[]> lightBoxes = new HashMap<>();
+        lightBoxes.put("Check Engine", new float[]{506,574});
+        lightBoxes.put("زيت المحرك", new float[]{506,622});
+        lightBoxes.put("حرارة المحرك", new float[]{403,574});
+        lightBoxes.put("بطارية", new float[]{506,694});
+        lightBoxes.put("ABS", new float[]{403,646});
+        lightBoxes.put("Brake", new float[]{300,598});
+        lightBoxes.put("ESP", new float[]{403,718});
+        lightBoxes.put("T-BELT", new float[]{300,670});
+        lightBoxes.put("4WD", new float[]{300,574});
+        lightBoxes.put("Airbag", new float[]{506,718});
+        lightBoxes.put("ضغط الإطارات", new float[]{506,742});
+        lightBoxes.put("مفتاح/Immobilizer", new float[]{403,598});
+        lightBoxes.put("صيانة/Record maint", new float[]{300,646});
         for (String x : lights) {
-            String v = value("light_"+x);
-            if ("توجد إشارة".equals(v)) { if (sb.length()>0) sb.append("، "); sb.append(x); }
+            if ("توجد إشارة".equals(value("light_"+x))) {
+                float[] q=lightBoxes.get(x); if(q!=null) tick(c,m,q[0],q[1]);
+            }
         }
-        drawWrappedRtl(c,p,"الإشارات الموجودة: " + (sb.length()==0?"لا توجد إشارات مسجلة":sb.toString()),560,610,270,12,6);
-        drawWrappedRtl(c,p,value("computer_notes"),560,690,270,12,4);
-        drawRtl(c,p,value("inspector"),220,680,150);
+        drawWrappedRtl(c,t,value("computer_notes"),555,766,290,11,3);
+        drawRtl(c,pdfPaint(8),value("inspector"),220,685,120);
+    }
+
+    private void tireTick(Canvas c, Paint m, String value, float cx, float y) {
+        if ("جيد".equals(value)) tick(c,m,cx+22,y);
+        else if ("تالف".equals(value)) tick(c,m,cx-12,y);
+    }
+
+    private void tickChoice(Canvas c, Paint m, String value, float y, String[] values, float[] xs) {
+        for (int i=0;i<values.length && i<xs.length;i++) if (values[i].equals(value)) { tick(c,m,xs[i],y); return; }
+    }
+
+    private void tick(Canvas c, Paint p, float x, float y) {
+        drawCentered(c,p,"✓",x,y,18);
     }
 
     private Paint pdfPaint(float size) {
