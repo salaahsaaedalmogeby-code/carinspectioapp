@@ -179,7 +179,7 @@ public class MainActivity extends Activity {
         addChoice("ac_status", "نظام التكييف والتبريد", new String[]{"اختر","يعمل","لا يعمل"});
 
         form.addView(section("8) التوجيه ونظام التعليق"));
-        String[] suspension = {"مجموعة الدركسون","الذراعات","المقصات","المساعدات","الكعكات","الفرامل","السبرنجه","عمود التوازن","أخرى"};
+        String[] suspension = {"مجموعة الدركسون","الذراعات","المقصات","المساعدات","الكعكات","الفرامل","السبرنجه","عمود التوازن"};
         for (String x : suspension) addChoice("sus_"+x, x, goodBad);
         addText("suspension_notes", "ملاحظات التوجيه والتعليق");
 
@@ -200,7 +200,10 @@ public class MainActivity extends Activity {
                 "حرارة المحرك", "شمعات التسخين/Glow Plug", "ABS", "ضغط زيت المحرك", "حرارة سائل التبريد", "ESP",
                 "Check Engine", "مستوى زيت المحرك", "مانع الانزلاق/Traction", "بطارية", "Airbag", "ضغط الإطارات"
         };
-        for (String x : lights) addChoice("light_"+x, x, new String[]{"اختر","لا توجد إشارة","توجد إشارة"});
+        for (int i=0; i<lights.length; i++) {
+            String x = lights[i];
+            addChoice("light_"+x, (i+1) + ") " + x, new String[]{"اختر","لا توجد إشارة","توجد إشارة"});
+        }
         addText("computer_notes", "ملاحظات فحص الكمبيوتر");
 
         form.addView(section("12) بيانات التقرير"));
@@ -470,7 +473,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    // v8: preserves the successful v7 calibration; fixes only page-1 vehicle text placement and all 18 dashboard indicators.
+    // v9: surgical update on v8. Keeps all successful page-2/page-3 calibration, fixes only page-1 vehicle cells, removes suspension "أخرى", and preserves 18 independent dashboard indicators.
     private void overlayPage1(Canvas c, int w, int h) {
         Paint text = pdfPaint(10.5f);
         Paint mark = pdfPaint(10.5f);
@@ -478,16 +481,20 @@ public class MainActivity extends Activity {
         drawCentered(c,text,date,500,191,70);
         drawRtl(c,pdfPaint(11f),value("owner"), 420, 233, 360);
 
-        // بيانات السيارة: الكتابة داخل منتصف الخانات البيضاء، لا فوق عناوين الحقول.
-        // v8: تم إنزال خط الأساس داخل صف الخانة مع تصغير تلقائي للنص الطويل بدل قطعه (...).
-        drawCenteredAutoFit(c,value("manufacturer"), 423, 266.5f, 66, 11.5f, 7.0f);
-        drawCenteredAutoFit(c,value("vehicle_type"), 350, 266.5f, 65, 11.5f, 7.0f);
-        drawCenteredAutoFit(c,value("model"), 286, 266.5f, 48, 11.5f, 7.0f);
-        drawCenteredAutoFit(c,value("color"), 116, 266.5f, 45, 11.5f, 7.0f);
-        drawCenteredAutoFit(c,value("vin"), 423, 289.0f, 66, 11.0f, 6.2f);
-        drawCenteredAutoFit(c,value("engine_type"), 350, 289.0f, 65, 11.5f, 7.0f);
-        drawCenteredAutoFit(c,value("plate"), 286, 289.0f, 48, 11.0f, 6.5f);
-        drawCenteredAutoFit(c,value("drive"), 116, 289.0f, 45, 11.0f, 6.5f);
+        // بيانات السيارة — v9: مراكز الخانات البيضاء مقاسة من القالب النهائي نفسه.
+        // الصف الأول: الشركة | نوع المركبة | الموديل | اللون.
+        // الصف الثاني: رقم الهيكل | نوع المحرك | رقم اللوحة | الدفع.
+        // خط الأساس مرفوع داخل كل خلية حتى لا يلامس العنوان الأصفر أو الحد السفلي.
+        final float vehicleRow1Y = 259.5f;
+        final float vehicleRow2Y = 280.0f;
+        drawCenteredAutoFit(c,value("manufacturer"), 422.5f, vehicleRow1Y, 66, 11.5f, 6.4f);
+        drawCenteredAutoFit(c,value("vehicle_type"), 286.2f, vehicleRow1Y, 50, 11.5f, 6.4f);
+        drawCenteredAutoFit(c,value("model"), 164.6f, vehicleRow1Y, 43, 11.5f, 6.4f);
+        drawCenteredAutoFit(c,value("color"), 60.7f, vehicleRow1Y, 57, 11.5f, 6.4f);
+        drawCenteredAutoFit(c,value("vin"), 422.5f, vehicleRow2Y, 66, 11.0f, 5.6f);
+        drawCenteredAutoFit(c,value("engine_type"), 286.2f, vehicleRow2Y, 50, 11.5f, 6.0f);
+        drawCenteredAutoFit(c,value("plate"), 164.6f, vehicleRow2Y, 43, 11.0f, 5.8f);
+        drawCenteredAutoFit(c,value("drive"), 60.7f, vehicleRow2Y, 57, 11.0f, 5.8f);
 
         if (enginePhotoPath != null && !enginePhotoPath.isEmpty() && new File(enginePhotoPath).exists()) {
             Bitmap photo = decodeScaledBitmap(enginePhotoPath, 1600, 1200);
@@ -589,7 +596,7 @@ public class MainActivity extends Activity {
         Paint m = pdfPaint(9.5f);
         Paint t = pdfPaint(9f);
 
-        String[] suspension = {"مجموعة الدركسون","الذراعات","المقصات","المساعدات","الكعكات","الفرامل","السبرنجه","عمود التوازن","أخرى"};
+        String[] suspension = {"مجموعة الدركسون","الذراعات","المقصات","المساعدات","الكعكات","الفرامل","السبرنجه","عمود التوازن"};
         float y = 133f;
         for (String x : suspension) {
             String v = value("sus_"+x);
