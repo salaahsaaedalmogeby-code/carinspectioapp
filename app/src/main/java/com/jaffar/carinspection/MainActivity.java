@@ -127,6 +127,7 @@ public class MainActivity extends Activity {
         addChoice("body", "البودي", bodyPaint);
         addText("base_notes", "ملاحظات القاعدة");
         addText("body_notes", "ملاحظات البودي");
+        addText("general_notes", "ملاحظات أخرى - نهاية الصفحة الأولى");
 
         form.addView(section("3) الأجزاء الداخلية للسيارة"));
         String[] interior = {"الزجاجات","فتحة السقف","مقابض الأبواب","الإضاءة والأنوار","الإشارات (الاصطبات)","الديكورات","الشنطة الخلفية","الأبواب الخلفية","الشاشة أو المسجل","المرايات","المساحات","المقاعد","الطبلون"};
@@ -204,11 +205,8 @@ public class MainActivity extends Activity {
             String x = lights[i];
             addChoice("light_"+x, (i+1) + ") " + x, new String[]{"اختر","لا توجد إشارة","توجد إشارة"});
         }
-        addText("computer_notes", "ملاحظات فحص الكمبيوتر");
-
         form.addView(section("12) بيانات التقرير"));
         addText("inspector", "اسم المهندس / الفاحص المختص");
-        addText("general_notes", "ملاحظات عامة");
         refreshEnginePhotoPreview();
     }
 
@@ -473,7 +471,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    // v10: uses the user-approved revised PDF template. Page 1/2 calibration is preserved; page 3 dashboard uses 18 fixed independent cells (3 columns x 6 rows).
+    // v11: preserves calibrated pages 1/2 and uses individually measured centers for all 18 dashboard boxes on page 3.
     private void overlayPage1(Canvas c, int w, int h) {
         Paint text = pdfPaint(10.5f);
         Paint mark = pdfPaint(10.5f);
@@ -623,27 +621,29 @@ public class MainActivity extends Activity {
                 "Check Engine", "مستوى زيت المحرك", "مانع الانزلاق/Traction", "بطارية", "Airbag", "ضغط الإطارات"
         };
         Map<String,float[]> lightBoxes = new HashMap<>();
-        // العمود الأيسر من الرموز
-        lightBoxes.put("4WD", new float[]{261,533.0f});
-        lightBoxes.put("Brake", new float[]{261,571.0f});
-        lightBoxes.put("صيانة/Record maint", new float[]{261,608.0f});
-        lightBoxes.put("T-BELT", new float[]{261,646.0f});
-        lightBoxes.put("مفتاح/Immobilizer", new float[]{261,683.0f});
-        lightBoxes.put("تحذير الدركسون", new float[]{261,721.0f});
-        // العمود الأوسط من الرموز
-        lightBoxes.put("حرارة المحرك", new float[]{383,533.0f});
-        lightBoxes.put("شمعات التسخين/Glow Plug", new float[]{383,571.0f});
-        lightBoxes.put("ABS", new float[]{383,608.0f});
-        lightBoxes.put("ضغط زيت المحرك", new float[]{383,646.0f});
-        lightBoxes.put("حرارة سائل التبريد", new float[]{383,683.0f});
-        lightBoxes.put("ESP", new float[]{383,721.0f});
-        // العمود الأيمن من الرموز
-        lightBoxes.put("Check Engine", new float[]{493,533.0f});
-        lightBoxes.put("مستوى زيت المحرك", new float[]{493,571.0f});
-        lightBoxes.put("مانع الانزلاق/Traction", new float[]{493,608.0f});
-        lightBoxes.put("بطارية", new float[]{493,646.0f});
-        lightBoxes.put("Airbag", new float[]{493,683.0f});
-        lightBoxes.put("ضغط الإطارات", new float[]{493,721.0f});
+        // v11: each of the 18 dashboard checks has its OWN measured center.
+        // Coordinates were measured from the final revised PDF; no calculated row spacing is used.
+        // Left group (6 independent white boxes)
+        lightBoxes.put("4WD", new float[]{225.5f,459.0f});
+        lightBoxes.put("Brake", new float[]{225.5f,490.0f});
+        lightBoxes.put("صيانة/Record maint", new float[]{225.5f,523.0f});
+        lightBoxes.put("T-BELT", new float[]{225.5f,555.0f});
+        lightBoxes.put("مفتاح/Immobilizer", new float[]{225.5f,582.5f});
+        lightBoxes.put("تحذير الدركسون", new float[]{225.5f,605.5f});
+        // Middle group (6 independent white boxes)
+        lightBoxes.put("حرارة المحرك", new float[]{330.0f,459.0f});
+        lightBoxes.put("شمعات التسخين/Glow Plug", new float[]{330.0f,490.0f});
+        lightBoxes.put("ABS", new float[]{330.0f,523.0f});
+        lightBoxes.put("ضغط زيت المحرك", new float[]{330.0f,555.0f});
+        lightBoxes.put("حرارة سائل التبريد", new float[]{330.0f,582.5f});
+        lightBoxes.put("ESP", new float[]{330.0f,605.5f});
+        // Right group (6 independent white boxes)
+        lightBoxes.put("Check Engine", new float[]{417.5f,459.0f});
+        lightBoxes.put("مستوى زيت المحرك", new float[]{417.5f,490.0f});
+        lightBoxes.put("مانع الانزلاق/Traction", new float[]{417.5f,523.0f});
+        lightBoxes.put("بطارية", new float[]{417.5f,555.0f});
+        lightBoxes.put("Airbag", new float[]{417.5f,582.5f});
+        lightBoxes.put("ضغط الإطارات", new float[]{417.5f,605.5f});
         for (String x : lights) {
             if ("توجد إشارة".equals(value("light_"+x))) {
                 float[] q=lightBoxes.get(x);
