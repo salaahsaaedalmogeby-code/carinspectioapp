@@ -473,7 +473,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    // v9: surgical update on v8. Keeps all successful page-2/page-3 calibration, fixes only page-1 vehicle cells, removes suspension "أخرى", and preserves 18 independent dashboard indicators.
+    // v10: uses the user-approved revised PDF template. Page 1/2 calibration is preserved; page 3 dashboard uses 18 fixed independent cells (3 columns x 6 rows).
     private void overlayPage1(Canvas c, int w, int h) {
         Paint text = pdfPaint(10.5f);
         Paint mark = pdfPaint(10.5f);
@@ -624,33 +624,32 @@ public class MainActivity extends Activity {
         };
         Map<String,float[]> lightBoxes = new HashMap<>();
         // العمود الأيسر من الرموز
-        lightBoxes.put("4WD", new float[]{277,567.5f});
-        lightBoxes.put("Brake", new float[]{277,592.0f});
-        lightBoxes.put("صيانة/Record maint", new float[]{277,616.0f});
-        lightBoxes.put("T-BELT", new float[]{277,640.5f});
-        lightBoxes.put("مفتاح/Immobilizer", new float[]{277,665.0f});
-        lightBoxes.put("تحذير الدركسون", new float[]{277,689.0f});
+        lightBoxes.put("4WD", new float[]{261,533.0f});
+        lightBoxes.put("Brake", new float[]{261,571.0f});
+        lightBoxes.put("صيانة/Record maint", new float[]{261,608.0f});
+        lightBoxes.put("T-BELT", new float[]{261,646.0f});
+        lightBoxes.put("مفتاح/Immobilizer", new float[]{261,683.0f});
+        lightBoxes.put("تحذير الدركسون", new float[]{261,721.0f});
         // العمود الأوسط من الرموز
-        lightBoxes.put("حرارة المحرك", new float[]{375,567.5f});
-        lightBoxes.put("شمعات التسخين/Glow Plug", new float[]{375,592.0f});
-        lightBoxes.put("ABS", new float[]{375,616.0f});
-        lightBoxes.put("ضغط زيت المحرك", new float[]{375,640.5f});
-        lightBoxes.put("حرارة سائل التبريد", new float[]{375,665.0f});
-        lightBoxes.put("ESP", new float[]{375,689.0f});
+        lightBoxes.put("حرارة المحرك", new float[]{383,533.0f});
+        lightBoxes.put("شمعات التسخين/Glow Plug", new float[]{383,571.0f});
+        lightBoxes.put("ABS", new float[]{383,608.0f});
+        lightBoxes.put("ضغط زيت المحرك", new float[]{383,646.0f});
+        lightBoxes.put("حرارة سائل التبريد", new float[]{383,683.0f});
+        lightBoxes.put("ESP", new float[]{383,721.0f});
         // العمود الأيمن من الرموز
-        lightBoxes.put("Check Engine", new float[]{475,567.5f});
-        lightBoxes.put("مستوى زيت المحرك", new float[]{475,592.0f});
-        lightBoxes.put("مانع الانزلاق/Traction", new float[]{475,616.0f});
-        lightBoxes.put("بطارية", new float[]{475,640.5f});
-        lightBoxes.put("Airbag", new float[]{475,665.0f});
-        lightBoxes.put("ضغط الإطارات", new float[]{475,689.0f});
+        lightBoxes.put("Check Engine", new float[]{493,533.0f});
+        lightBoxes.put("مستوى زيت المحرك", new float[]{493,571.0f});
+        lightBoxes.put("مانع الانزلاق/Traction", new float[]{493,608.0f});
+        lightBoxes.put("بطارية", new float[]{493,646.0f});
+        lightBoxes.put("Airbag", new float[]{493,683.0f});
+        lightBoxes.put("ضغط الإطارات", new float[]{493,721.0f});
         for (String x : lights) {
             if ("توجد إشارة".equals(value("light_"+x))) {
                 float[] q=lightBoxes.get(x);
                 if(q!=null) tick(c,m,q[0],q[1]);
             }
         }
-        drawWrappedRtl(c,t,value("computer_notes"),245,746,190,11,3);
         drawRtl(c,pdfPaint(10f),value("inspector"),145,566,110);
     }
 
