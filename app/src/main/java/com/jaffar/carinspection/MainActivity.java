@@ -192,8 +192,14 @@ public class MainActivity extends Activity {
         form.addView(section("10) التجربة الميدانية للسيارة"));
         addText("road_test", "نتيجة التجربة الميدانية");
 
-        form.addView(section("11) فحص الكمبيوتر وإشارات الطبلون"));
-        String[] lights = {"Check Engine","زيت المحرك","حرارة المحرك","بطارية","ABS","Brake","ESP","T-BELT","4WD","Airbag","ضغط الإطارات","مفتاح/Immobilizer","صيانة/Record maint"};
+        form.addView(section("11) فحص الكمبيوتر وإشارات الطبلون (18 إشارة)"));
+        // القالب النهائي يحتوي على 18 رمزاً مستقلاً (3 أعمدة × 6 صفوف).
+        // لكل رمز اختيار مستقل حتى لا تُهمل أي إشارة موجودة في التقرير الورقي.
+        String[] lights = {
+                "4WD", "Brake", "صيانة/Record maint", "T-BELT", "مفتاح/Immobilizer", "تحذير الدركسون",
+                "حرارة المحرك", "شمعات التسخين/Glow Plug", "ABS", "ضغط زيت المحرك", "حرارة سائل التبريد", "ESP",
+                "Check Engine", "مستوى زيت المحرك", "مانع الانزلاق/Traction", "بطارية", "Airbag", "ضغط الإطارات"
+        };
         for (String x : lights) addChoice("light_"+x, x, new String[]{"اختر","لا توجد إشارة","توجد إشارة"});
         addText("computer_notes", "ملاحظات فحص الكمبيوتر");
 
@@ -464,7 +470,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    // v7: calibrated against the final user-supplied PDF template, cell by cell.
+    // v8: preserves the successful v7 calibration; fixes only page-1 vehicle text placement and all 18 dashboard indicators.
     private void overlayPage1(Canvas c, int w, int h) {
         Paint text = pdfPaint(10.5f);
         Paint mark = pdfPaint(10.5f);
@@ -472,15 +478,16 @@ public class MainActivity extends Activity {
         drawCentered(c,text,date,500,191,70);
         drawRtl(c,pdfPaint(11f),value("owner"), 420, 233, 360);
 
-        // بيانات السيارة: مراكز الخانات البيضاء الفعلية في القالب النهائي.
-        drawCentered(c,text,value("manufacturer"), 423, 254, 66);
-        drawCentered(c,text,value("vehicle_type"), 350, 254, 65);
-        drawCentered(c,text,value("model"), 286, 254, 48);
-        drawCentered(c,text,value("color"), 116, 254, 45);
-        drawCentered(c,text,value("vin"), 423, 276, 66);
-        drawCentered(c,text,value("engine_type"), 350, 276, 65);
-        drawCentered(c,text,value("plate"), 286, 276, 48);
-        drawCentered(c,text,value("drive"), 116, 276, 45);
+        // بيانات السيارة: الكتابة داخل منتصف الخانات البيضاء، لا فوق عناوين الحقول.
+        // v8: تم إنزال خط الأساس داخل صف الخانة مع تصغير تلقائي للنص الطويل بدل قطعه (...).
+        drawCenteredAutoFit(c,value("manufacturer"), 423, 266.5f, 66, 11.5f, 7.0f);
+        drawCenteredAutoFit(c,value("vehicle_type"), 350, 266.5f, 65, 11.5f, 7.0f);
+        drawCenteredAutoFit(c,value("model"), 286, 266.5f, 48, 11.5f, 7.0f);
+        drawCenteredAutoFit(c,value("color"), 116, 266.5f, 45, 11.5f, 7.0f);
+        drawCenteredAutoFit(c,value("vin"), 423, 289.0f, 66, 11.0f, 6.2f);
+        drawCenteredAutoFit(c,value("engine_type"), 350, 289.0f, 65, 11.5f, 7.0f);
+        drawCenteredAutoFit(c,value("plate"), 286, 289.0f, 48, 11.0f, 6.5f);
+        drawCenteredAutoFit(c,value("drive"), 116, 289.0f, 45, 11.0f, 6.5f);
 
         if (enginePhotoPath != null && !enginePhotoPath.isEmpty() && new File(enginePhotoPath).exists()) {
             Bitmap photo = decodeScaledBitmap(enginePhotoPath, 1600, 1200);
@@ -601,25 +608,39 @@ public class MainActivity extends Activity {
 
         drawWrappedRtl(c,pdfPaint(9f),value("road_test"),520,428,330,12,2);
 
-        // مربعات إشارات الطبلون هي الخلايا البيضاء الملاصقة لكل أيقونة.
-        String[] lights = {"Check Engine","زيت المحرك","حرارة المحرك","بطارية","ABS","Brake","ESP","T-BELT","4WD","Airbag","ضغط الإطارات","مفتاح/Immobilizer","صيانة/Record maint"};
+        // إشارات الطبلون: القالب يحتوي 18 رمزاً (3 أعمدة × 6 صفوف).
+        // الخلايا البيضاء تقع يسار كل رمز مباشرة؛ نضع ✓ في مركز الخلية المقابلة فقط.
+        String[] lights = {
+                "4WD", "Brake", "صيانة/Record maint", "T-BELT", "مفتاح/Immobilizer", "تحذير الدركسون",
+                "حرارة المحرك", "شمعات التسخين/Glow Plug", "ABS", "ضغط زيت المحرك", "حرارة سائل التبريد", "ESP",
+                "Check Engine", "مستوى زيت المحرك", "مانع الانزلاق/Traction", "بطارية", "Airbag", "ضغط الإطارات"
+        };
         Map<String,float[]> lightBoxes = new HashMap<>();
-        lightBoxes.put("Check Engine", new float[]{475,567.5f});
-        lightBoxes.put("زيت المحرك", new float[]{475,592});
-        lightBoxes.put("حرارة المحرك", new float[]{375,567.5f});
-        lightBoxes.put("بطارية", new float[]{475,640.5f});
-        lightBoxes.put("ABS", new float[]{375,616});
-        lightBoxes.put("Brake", new float[]{277,592});
-        lightBoxes.put("ESP", new float[]{375,689});
-        lightBoxes.put("T-BELT", new float[]{277,640.5f});
+        // العمود الأيسر من الرموز
         lightBoxes.put("4WD", new float[]{277,567.5f});
-        lightBoxes.put("Airbag", new float[]{475,665});
-        lightBoxes.put("ضغط الإطارات", new float[]{475,689});
-        lightBoxes.put("مفتاح/Immobilizer", new float[]{375,592});
-        lightBoxes.put("صيانة/Record maint", new float[]{277,616});
+        lightBoxes.put("Brake", new float[]{277,592.0f});
+        lightBoxes.put("صيانة/Record maint", new float[]{277,616.0f});
+        lightBoxes.put("T-BELT", new float[]{277,640.5f});
+        lightBoxes.put("مفتاح/Immobilizer", new float[]{277,665.0f});
+        lightBoxes.put("تحذير الدركسون", new float[]{277,689.0f});
+        // العمود الأوسط من الرموز
+        lightBoxes.put("حرارة المحرك", new float[]{375,567.5f});
+        lightBoxes.put("شمعات التسخين/Glow Plug", new float[]{375,592.0f});
+        lightBoxes.put("ABS", new float[]{375,616.0f});
+        lightBoxes.put("ضغط زيت المحرك", new float[]{375,640.5f});
+        lightBoxes.put("حرارة سائل التبريد", new float[]{375,665.0f});
+        lightBoxes.put("ESP", new float[]{375,689.0f});
+        // العمود الأيمن من الرموز
+        lightBoxes.put("Check Engine", new float[]{475,567.5f});
+        lightBoxes.put("مستوى زيت المحرك", new float[]{475,592.0f});
+        lightBoxes.put("مانع الانزلاق/Traction", new float[]{475,616.0f});
+        lightBoxes.put("بطارية", new float[]{475,640.5f});
+        lightBoxes.put("Airbag", new float[]{475,665.0f});
+        lightBoxes.put("ضغط الإطارات", new float[]{475,689.0f});
         for (String x : lights) {
             if ("توجد إشارة".equals(value("light_"+x))) {
-                float[] q=lightBoxes.get(x); if(q!=null) tick(c,m,q[0],q[1]);
+                float[] q=lightBoxes.get(x);
+                if(q!=null) tick(c,m,q[0],q[1]);
             }
         }
         drawWrappedRtl(c,t,value("computer_notes"),245,746,190,11,3);
@@ -658,6 +679,18 @@ public class MainActivity extends Activity {
     }
 
     private String cleanChoice(String s) { return (s==null || s.equals("اختر")) ? "" : s; }
+
+    private void drawCenteredAutoFit(Canvas c, String text, float cx, float y, float maxWidth, float maxSize, float minSize) {
+        if (text == null) text = "";
+        Paint p = pdfPaint(maxSize);
+        float size = maxSize;
+        while (size > minSize && p.measureText(text) > maxWidth) {
+            size -= 0.35f;
+            p.setTextSize(size);
+        }
+        p.setTextAlign(Paint.Align.CENTER);
+        c.drawText(text, cx, y, p);
+    }
 
     private void drawCentered(Canvas c, Paint p, String text, float cx, float y, float maxWidth) {
         if (text == null) text = "";
