@@ -146,7 +146,6 @@ public class MainActivity extends Activity {
         form.addView(section("3) الأجزاء الداخلية للسيارة"));
         String[] interior = {"الزجاجات","فتحة السقف","مقابض الأبواب","الإضاءة والأنوار","الإشارات (الاصطبات)","الديكورات","الشنطة الخلفية","الأبواب الخلفية","الشاشة أو المسجل","المرايات","المساحات","المقاعد","الطبلون"};
         for (String x : interior) addChoice("int_"+x, x, intact);
-        addText("interior_notes", "ملاحظات الأجزاء الداخلية");
 
         form.addView(section("4) فحص المحرك"));
         addEngineCameraControls();
@@ -777,7 +776,7 @@ public class MainActivity extends Activity {
         drawWrappedRtl(c,pdfPaint(8.5f),value("body_notes"),225,648,185,11,3);
 
         // الملاحظات العامة أسفل الجدولين وعلى السطر المخصص لها.
-        drawWrappedRtl(c,pdfPaint(10f),value("general_notes"),558,736,505,14,2);
+        drawWrappedRtl(c,pdfPaint(9.5f),value("general_notes"),548,732,485,13,2);
     }
 
     private void overlayPage2(Canvas c, int w, int h) {
@@ -856,7 +855,7 @@ public class MainActivity extends Activity {
         tireTick(c,m,value("tire_rl"),89,292);
         tireTick(c,m,value("tire_rr"),187,292);
 
-        drawWrappedRtl(c,pdfPaint(9f),value("road_test"),558,420,505,12,1);
+        drawWrappedRtl(c,pdfPaint(8.8f),value("road_test"),548,424,485,11.5f,1);
 
         // إشارات الطبلون: القالب يحتوي 18 رمزاً (3 أعمدة × 6 صفوف).
         // الخلايا البيضاء تقع يسار كل رمز مباشرة؛ نضع ✓ في مركز الخلية المقابلة فقط.
@@ -897,7 +896,7 @@ public class MainActivity extends Activity {
                 if(q!=null) tick(c,m,q[0],q[1]);
             }
         }
-        drawRtl(c,pdfPaint(10f),value("inspector"),145,566,110);
+        drawCenteredAutoFit(c,value("inspector"),85,566,110,10.0f,6.0f);
     }
 
 
