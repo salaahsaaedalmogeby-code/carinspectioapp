@@ -18,3 +18,11 @@
 ## البناء عبر GitHub
 ارفع محتويات هذا المجلد إلى المستودع ثم افتح Actions > Build Android APK > Run workflow.
 بعد نجاح البناء نزّل CarInspectionApp-APK من Artifacts.
+
+
+## v15 camera fix
+- Added FileProvider access for the optional car_photos folder so the four vehicle-photo camera buttons work.
+
+
+## v16 camera compatibility fix
+تم توسيع FileProvider وإضافة ClipData ومنح URI permissions لتطبيقات الكاميرا، خصوصاً لصور الصفحة الرابعة.

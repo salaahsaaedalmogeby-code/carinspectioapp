@@ -408,7 +408,12 @@ public class MainActivity extends Activity {
             pendingCarPhotoPaths[index] = photo.getAbsolutePath();
             Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", photo);
             intent.putExtra(MediaStore.EXTRA_OUTPUT, uri);
+            intent.setClipData(ClipData.newRawUri("car_photo", uri));
             intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            for (android.content.pm.ResolveInfo ri : getPackageManager().queryIntentActivities(intent, 0)) {
+                grantUriPermission(ri.activityInfo.packageName, uri,
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            }
             startActivityForResult(intent, REQ_CAR_PHOTO_BASE + index);
         } catch (Exception e) {
             showError("تعذر فتح الكاميرا", e);
@@ -486,7 +491,12 @@ public class MainActivity extends Activity {
             pendingPhotoPath = photo.getAbsolutePath();
             Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", photo);
             intent.putExtra(MediaStore.EXTRA_OUTPUT, uri);
+            intent.setClipData(ClipData.newRawUri("engine_photo", uri));
             intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            for (android.content.pm.ResolveInfo ri : getPackageManager().queryIntentActivities(intent, 0)) {
+                grantUriPermission(ri.activityInfo.packageName, uri,
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            }
             startActivityForResult(intent, REQ_ENGINE_CAMERA);
         } catch (Exception e) {
             showError("تعذر فتح الكاميرا", e);
