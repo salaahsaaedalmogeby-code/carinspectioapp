@@ -1,3 +1,12 @@
+# بناء تطبيق الهاتف v13 عبر GitHub
+
+1. ارفع محتويات المشروع إلى المستودع نفسه.
+2. تأكد أن الملف `.github/workflows/build-apk.yml` موجود.
+3. افتح **Actions** ثم **Build Android APK**.
+4. اختر **Run workflow**.
+5. بعد ظهور علامة النجاح الخضراء، افتح التشغيل وانزل إلى **Artifacts**.
+6. نزّل **CarInspectionApp-APK**، فك الضغط، وثبّت `app-debug.apk` على الهاتف.
+
 # بناء APK عبر GitHub بدون Android Studio
 
 ## 1) أنشئ مستودع GitHub جديد

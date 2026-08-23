@@ -46,6 +46,12 @@
             android:layout_height="wrap_content"
             android:text="الفحوصات المحفوظة / تعديل فحص"/>
 
+        <Button
+            android:id="@+id/btnChangePassword"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="تغيير كلمة المرور"/>
+
         <LinearLayout
             android:id="@+id/formContainer"
             android:layout_width="match_parent"

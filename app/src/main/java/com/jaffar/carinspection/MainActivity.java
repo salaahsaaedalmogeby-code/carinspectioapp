@@ -16,10 +16,14 @@ import org.json.JSONObject;
 import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.security.MessageDigest;
 
 public class MainActivity extends Activity {
 
     private static final int REQ_ENGINE_CAMERA = 1201;
+    private static final int REQ_CAR_PHOTO_BASE = 1300;
+    private static final String AUTH_PREFS = "system_auth";
+    private static final String PASSWORD_HASH_KEY = "password_hash_v1";
     private LinearLayout form;
     private Button btnSave, btnPdf;
     private ImageView enginePhotoPreview;
@@ -29,6 +33,10 @@ public class MainActivity extends Activity {
     private String currentInspectionId = null;
     private String enginePhotoPath = "";
     private String pendingPhotoPath = "";
+    private final String[] carPhotoPaths = new String[]{"", "", "", ""};
+    private final String[] pendingCarPhotoPaths = new String[]{"", "", "", ""};
+    private final ImageView[] carPhotoPreviews = new ImageView[4];
+    private final TextView[] carPhotoStatuses = new TextView[4];
 
     final String[] condition4 = {"اختر", "ممتاز", "جيد", "متوسط", "ضعيف"};
     final String[] yesNo = {"اختر", "يوجد", "لا يوجد"};
@@ -49,9 +57,13 @@ public class MainActivity extends Activity {
 
         findViewById(R.id.btnNew).setOnClickListener(v -> newInspection());
         findViewById(R.id.btnSaved).setOnClickListener(v -> showSavedInspections());
+        findViewById(R.id.btnChangePassword).setOnClickListener(v -> changePassword());
         btnSave.setOnClickListener(v -> saveInspection(true));
         btnPdf.setOnClickListener(v -> generatePdf());
-        newInspection();
+
+        // لا نعرض بيانات النظام قبل نجاح تسجيل الدخول.
+        findViewById(R.id.content).setVisibility(View.INVISIBLE);
+        showAuthenticationDialog();
     }
 
     private TextView section(String title) {
@@ -100,6 +112,8 @@ public class MainActivity extends Activity {
         currentInspectionId = null;
         enginePhotoPath = "";
         pendingPhotoPath = "";
+        Arrays.fill(carPhotoPaths, "");
+        Arrays.fill(pendingCarPhotoPaths, "");
         buildForm();
     }
 
@@ -205,9 +219,220 @@ public class MainActivity extends Activity {
             String x = lights[i];
             addChoice("light_"+x, (i+1) + ") " + x, new String[]{"اختر","لا توجد إشارة","توجد إشارة"});
         }
-        form.addView(section("12) بيانات التقرير"));
+
+        form.addView(section("12) صور السيارة - اختيارية (حتى 4 صور)"));
+        addCarPhotosControls();
+
+        form.addView(section("13) بيانات التقرير"));
         addText("inspector", "اسم المهندس / الفاحص المختص");
         refreshEnginePhotoPreview();
+    }
+
+
+    private void showAuthenticationDialog() {
+        final boolean firstRun = getSharedPreferences(AUTH_PREFS, MODE_PRIVATE)
+                .getString(PASSWORD_HASH_KEY, "").isEmpty();
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = dp(20);
+        box.setPadding(pad, dp(8), pad, 0);
+
+        EditText pass1 = new EditText(this);
+        pass1.setHint(firstRun ? "أنشئ كلمة مرور (4 أحرف/أرقام على الأقل)" : "أدخل كلمة المرور");
+        pass1.setSingleLine(true);
+        pass1.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        box.addView(pass1);
+
+        EditText pass2 = null;
+        if (firstRun) {
+            pass2 = new EditText(this);
+            pass2.setHint("تأكيد كلمة المرور");
+            pass2.setSingleLine(true);
+            pass2.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+            box.addView(pass2);
+        }
+        final EditText confirmField = pass2;
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(firstRun ? "إعداد كلمة مرور النظام" : "دخول نظام الفحص")
+                .setMessage(firstRun ? "أول تشغيل: أنشئ كلمة مرور خاصة بالنظام. يمكنك تغييرها لاحقاً من زر تغيير كلمة المرور." : "أدخل كلمة المرور لفتح النظام.")
+                .setView(box)
+                .setCancelable(false)
+                .setPositiveButton(firstRun ? "حفظ والدخول" : "دخول", null)
+                .setNegativeButton("إغلاق", (d,w) -> finish())
+                .create();
+        dialog.setOnShowListener(x -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String p1 = pass1.getText().toString();
+            if (p1.length() < 4) {
+                pass1.setError("كلمة المرور يجب أن تكون 4 أحرف/أرقام على الأقل");
+                return;
+            }
+            if (firstRun) {
+                String p2 = confirmField == null ? "" : confirmField.getText().toString();
+                if (!p1.equals(p2)) {
+                    if (confirmField != null) confirmField.setError("تأكيد كلمة المرور غير مطابق");
+                    return;
+                }
+                getSharedPreferences(AUTH_PREFS, MODE_PRIVATE).edit()
+                        .putString(PASSWORD_HASH_KEY, hashPassword(p1)).apply();
+            } else {
+                String saved = getSharedPreferences(AUTH_PREFS, MODE_PRIVATE)
+                        .getString(PASSWORD_HASH_KEY, "");
+                if (!hashPassword(p1).equals(saved)) {
+                    pass1.setError("كلمة المرور غير صحيحة");
+                    pass1.setText("");
+                    return;
+                }
+            }
+            dialog.dismiss();
+            findViewById(R.id.content).setVisibility(View.VISIBLE);
+            newInspection();
+        }));
+        dialog.show();
+    }
+
+    private void changePassword() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = dp(20);
+        box.setPadding(pad, dp(8), pad, 0);
+        EditText current = passwordField("كلمة المرور الحالية");
+        EditText next = passwordField("كلمة المرور الجديدة");
+        EditText confirm = passwordField("تأكيد كلمة المرور الجديدة");
+        box.addView(current); box.addView(next); box.addView(confirm);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("تغيير كلمة المرور")
+                .setView(box)
+                .setPositiveButton("حفظ", null)
+                .setNegativeButton("إلغاء", null)
+                .create();
+        dialog.setOnShowListener(x -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String saved = getSharedPreferences(AUTH_PREFS, MODE_PRIVATE).getString(PASSWORD_HASH_KEY, "");
+            if (!hashPassword(current.getText().toString()).equals(saved)) {
+                current.setError("كلمة المرور الحالية غير صحيحة"); return;
+            }
+            if (next.getText().length() < 4) {
+                next.setError("4 أحرف/أرقام على الأقل"); return;
+            }
+            if (!next.getText().toString().equals(confirm.getText().toString())) {
+                confirm.setError("تأكيد كلمة المرور غير مطابق"); return;
+            }
+            getSharedPreferences(AUTH_PREFS, MODE_PRIVATE).edit()
+                    .putString(PASSWORD_HASH_KEY, hashPassword(next.getText().toString())).apply();
+            dialog.dismiss();
+            Toast.makeText(this, "تم تغيير كلمة المرور بنجاح", Toast.LENGTH_SHORT).show();
+        }));
+        dialog.show();
+    }
+
+    private EditText passwordField(String hint) {
+        EditText e = new EditText(this);
+        e.setHint(hint);
+        e.setSingleLine(true);
+        e.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        return e;
+    }
+
+    private String hashPassword(String value) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] d = md.digest(value.getBytes("UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : d) sb.append(String.format(Locale.US, "%02x", b & 0xff));
+            return sb.toString();
+        } catch (Exception e) {
+            return Integer.toHexString(value.hashCode());
+        }
+    }
+
+    private void addCarPhotosControls() {
+        TextView note = new TextView(this);
+        note.setText("هذه الصور اختيارية. إذا لم تُلتقط أي صورة فلن تُضاف الصفحة الرابعة إلى التقرير.");
+        note.setTextSize(14);
+        note.setGravity(Gravity.RIGHT);
+        note.setPadding(4, 4, 4, 10);
+        form.addView(note);
+
+        for (int i=0; i<4; i++) {
+            final int index = i;
+            TextView title = new TextView(this);
+            title.setText("صورة السيارة " + (i+1));
+            title.setTypeface(Typeface.DEFAULT_BOLD);
+            title.setGravity(Gravity.RIGHT);
+            title.setPadding(4, 10, 4, 4);
+            form.addView(title);
+
+            ImageView preview = new ImageView(this);
+            preview.setAdjustViewBounds(true);
+            preview.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            preview.setBackgroundColor(Color.rgb(230,234,238));
+            carPhotoPreviews[i] = preview;
+            form.addView(preview, new LinearLayout.LayoutParams(-1, dp(150)));
+
+            TextView status = new TextView(this);
+            status.setGravity(Gravity.CENTER);
+            carPhotoStatuses[i] = status;
+            form.addView(status);
+
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            Button capture = new Button(this);
+            capture.setText("تصوير");
+            capture.setOnClickListener(v -> captureCarPhoto(index));
+            row.addView(capture, new LinearLayout.LayoutParams(0, -2, 1));
+            Button remove = new Button(this);
+            remove.setText("حذف");
+            remove.setOnClickListener(v -> {
+                carPhotoPaths[index] = "";
+                pendingCarPhotoPaths[index] = "";
+                refreshCarPhotoPreview(index);
+                saveInspection(false);
+            });
+            row.addView(remove, new LinearLayout.LayoutParams(0, -2, 1));
+            form.addView(row);
+            refreshCarPhotoPreview(index);
+        }
+    }
+
+    private void captureCarPhoto(int index) {
+        try {
+            Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            if (intent.resolveActivity(getPackageManager()) == null) {
+                Toast.makeText(this, "لا يوجد تطبيق كاميرا متاح", Toast.LENGTH_LONG).show();
+                return;
+            }
+            File dir = new File(getFilesDir(), "car_photos");
+            if (!dir.exists()) dir.mkdirs();
+            File photo = new File(dir, "car_" + (index+1) + "_" + System.currentTimeMillis() + ".jpg");
+            pendingCarPhotoPaths[index] = photo.getAbsolutePath();
+            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", photo);
+            intent.putExtra(MediaStore.EXTRA_OUTPUT, uri);
+            intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivityForResult(intent, REQ_CAR_PHOTO_BASE + index);
+        } catch (Exception e) {
+            showError("تعذر فتح الكاميرا", e);
+        }
+    }
+
+    private void refreshCarPhotoPreview(int index) {
+        if (index < 0 || index >= 4 || carPhotoPreviews[index] == null) return;
+        String path = carPhotoPaths[index];
+        if (path != null && !path.isEmpty() && new File(path).exists()) {
+            Bitmap b = decodeScaledBitmap(path, 900, 600);
+            carPhotoPreviews[index].setImageBitmap(b);
+            carPhotoStatuses[index].setText("تم حفظ الصورة ✓");
+        } else {
+            carPhotoPreviews[index].setImageDrawable(null);
+            carPhotoPreviews[index].setBackgroundColor(Color.rgb(230,234,238));
+            carPhotoStatuses[index].setText("لم يتم التصوير");
+        }
+    }
+
+    private boolean hasCarPhotos() {
+        for (String p : carPhotoPaths) if (p != null && !p.isEmpty() && new File(p).exists()) return true;
+        return false;
     }
 
     private void addEngineCameraControls() {
@@ -281,6 +506,19 @@ public class MainActivity extends Activity {
                 new File(pendingPhotoPath).delete();
             }
             pendingPhotoPath = "";
+            return;
+        }
+        if (requestCode >= REQ_CAR_PHOTO_BASE && requestCode < REQ_CAR_PHOTO_BASE + 4) {
+            int index = requestCode - REQ_CAR_PHOTO_BASE;
+            String pending = pendingCarPhotoPaths[index];
+            if (resultCode == RESULT_OK && pending != null && !pending.isEmpty()) {
+                carPhotoPaths[index] = pending;
+                refreshCarPhotoPreview(index);
+                saveInspection(false);
+            } else if (pending != null && !pending.isEmpty()) {
+                new File(pending).delete();
+            }
+            pendingCarPhotoPaths[index] = "";
         }
     }
 
@@ -308,6 +546,7 @@ public class MainActivity extends Activity {
         for (Map.Entry<String, EditText> e : textFields.entrySet()) obj.put("t_"+e.getKey(), e.getValue().getText().toString());
         for (Map.Entry<String, Spinner> e : choiceFields.entrySet()) obj.put("s_"+e.getKey(), e.getValue().getSelectedItem().toString());
         obj.put("engine_photo", enginePhotoPath == null ? "" : enginePhotoPath);
+        for (int i=0; i<4; i++) obj.put("car_photo_"+i, carPhotoPaths[i] == null ? "" : carPhotoPaths[i]);
         obj.put("saved_at", new SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(new Date()));
         return obj;
     }
@@ -383,7 +622,9 @@ public class MainActivity extends Activity {
                 for (int i=0;i<s.getCount();i++) if (s.getItemAtPosition(i).toString().equals(val)) { s.setSelection(i); break; }
             }
             enginePhotoPath = o.optString("engine_photo", "");
+            for (int i=0; i<4; i++) carPhotoPaths[i] = o.optString("car_photo_"+i, "");
             refreshEnginePhotoPreview();
+            for (int i=0; i<4; i++) refreshCarPhotoPreview(i);
             Toast.makeText(this, "تم فتح الفحص — عدّل البيانات ثم اضغط حفظ الفحص", Toast.LENGTH_LONG).show();
         } catch (Exception e) { showError("تعذر تحميل الفحص", e); }
     }
@@ -399,10 +640,13 @@ public class MainActivity extends Activity {
             renderer = new PdfRenderer(pfd);
             outDoc = new PdfDocument();
 
+            int lastPageW = 595;
+            int lastPageH = 842;
             for (int i=0; i<renderer.getPageCount(); i++) {
                 PdfRenderer.Page rp = renderer.openPage(i);
                 int pageW = rp.getWidth();
                 int pageH = rp.getHeight();
+                lastPageW = pageW; lastPageH = pageH;
                 int renderScale = 2;
                 Bitmap bg = Bitmap.createBitmap(pageW*renderScale, pageH*renderScale, Bitmap.Config.ARGB_8888);
                 bg.eraseColor(Color.WHITE);
@@ -418,6 +662,7 @@ public class MainActivity extends Activity {
                 if (i == 2) overlayPage3(c, pageW, pageH);
                 outDoc.finishPage(op);
             }
+            if (hasCarPhotos()) addCarPhotosPage(outDoc, lastPageW, lastPageH, renderer.getPageCount()+1);
 
             String plate = safeName(value("plate"));
             if (plate.isEmpty()) plate = "car";
@@ -471,12 +716,12 @@ public class MainActivity extends Activity {
         }
     }
 
-    // v12: preserves calibrated pages 1/2 and uses exact measured centers for all 18 dashboard boxes on page 3.
+    // v13: new notes-box template + automatic date + password protection + optional 4-photo page.
     private void overlayPage1(Canvas c, int w, int h) {
         Paint text = pdfPaint(10.5f);
         Paint mark = pdfPaint(10.5f);
         String date = new SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(new Date());
-        drawCentered(c,text,date,500,191,70);
+        drawCentered(c,text,date,516,195,105);
         drawRtl(c,pdfPaint(11f),value("owner"), 420, 233, 360);
 
         // بيانات السيارة — v9: مراكز الخانات البيضاء مقاسة من القالب النهائي نفسه.
@@ -532,7 +777,7 @@ public class MainActivity extends Activity {
         drawWrappedRtl(c,pdfPaint(8.5f),value("body_notes"),225,648,185,11,3);
 
         // الملاحظات العامة أسفل الجدولين وعلى السطر المخصص لها.
-        drawWrappedRtl(c,pdfPaint(9f),value("general_notes"),470,710,410,12,4);
+        drawWrappedRtl(c,pdfPaint(10f),value("general_notes"),558,736,505,14,2);
     }
 
     private void overlayPage2(Canvas c, int w, int h) {
@@ -603,7 +848,7 @@ public class MainActivity extends Activity {
             y += 24.45f;
         }
         // الملاحظات على السطر المنقط، وليس أسفل عنوان الملاحظات.
-        drawWrappedRtl(c,t,value("suspension_notes"),470,340,185,12,2);
+        drawWrappedRtl(c,t,value("suspension_notes"),558,367,505,13,2);
 
         // الإطارات: مركز مربع جيد/تالف بالضبط.
         tireTick(c,m,value("tire_fl"),89,145);
@@ -611,7 +856,7 @@ public class MainActivity extends Activity {
         tireTick(c,m,value("tire_rl"),89,292);
         tireTick(c,m,value("tire_rr"),187,292);
 
-        drawWrappedRtl(c,pdfPaint(9f),value("road_test"),520,428,330,12,2);
+        drawWrappedRtl(c,pdfPaint(9f),value("road_test"),558,420,505,12,1);
 
         // إشارات الطبلون: القالب يحتوي 18 رمزاً (3 أعمدة × 6 صفوف).
         // الخلايا البيضاء تقع يسار كل رمز مباشرة؛ نضع ✓ في مركز الخلية المقابلة فقط.
@@ -653,6 +898,60 @@ public class MainActivity extends Activity {
             }
         }
         drawRtl(c,pdfPaint(10f),value("inspector"),145,566,110);
+    }
+
+
+    private void addCarPhotosPage(PdfDocument outDoc, int pageW, int pageH, int pageNumber) {
+        PdfDocument.Page page = outDoc.startPage(new PdfDocument.PageInfo.Builder(pageW, pageH, pageNumber).create());
+        Canvas c = page.getCanvas();
+        c.drawColor(Color.WHITE);
+
+        Paint title = pdfPaint(20f);
+        title.setTypeface(Typeface.create("sans", Typeface.BOLD));
+        title.setTextAlign(Paint.Align.CENTER);
+        c.drawText("صور السيارة المرفقة بتقرير الفحص", pageW/2f, 55, title);
+
+        Paint info = pdfPaint(10f);
+        info.setTextAlign(Paint.Align.RIGHT);
+        String date = new SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(new Date());
+        c.drawText("مالك السيارة: " + value("owner"), pageW-35, 82, info);
+        c.drawText("رقم اللوحة: " + value("plate") + "    التاريخ: " + date, pageW-35, 100, info);
+
+        Paint border = new Paint(Paint.ANTI_ALIAS_FLAG);
+        border.setColor(Color.DKGRAY);
+        border.setStyle(Paint.Style.STROKE);
+        border.setStrokeWidth(1.2f);
+
+        float margin = 30f;
+        float gap = 14f;
+        float top = 125f;
+        float bottom = pageH - 50f;
+        float boxW = (pageW - 2*margin - gap) / 2f;
+        float boxH = (bottom - top - gap) / 2f;
+        RectF[] boxes = new RectF[]{
+                new RectF(margin, top, margin+boxW, top+boxH),
+                new RectF(margin+boxW+gap, top, pageW-margin, top+boxH),
+                new RectF(margin, top+boxH+gap, margin+boxW, bottom),
+                new RectF(margin+boxW+gap, top+boxH+gap, pageW-margin, bottom)
+        };
+
+        Paint label = pdfPaint(9f);
+        label.setTextAlign(Paint.Align.CENTER);
+        for (int i=0; i<4; i++) {
+            c.drawRect(boxes[i], border);
+            String path = carPhotoPaths[i];
+            if (path != null && !path.isEmpty() && new File(path).exists()) {
+                Bitmap photo = decodeScaledBitmap(path, 1800, 1400);
+                if (photo != null) {
+                    RectF inset = new RectF(boxes[i].left+5, boxes[i].top+5, boxes[i].right-5, boxes[i].bottom-5);
+                    drawBitmapCenterCrop(c, photo, inset);
+                    photo.recycle();
+                }
+            } else {
+                c.drawText("الصورة " + (i+1) + " - غير مضافة", boxes[i].centerX(), boxes[i].centerY(), label);
+            }
+        }
+        outDoc.finishPage(page);
     }
 
     private void tireTick(Canvas c, Paint m, String value, float cx, float y) {
