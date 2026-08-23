@@ -599,22 +599,144 @@ public class MainActivity extends Activity {
 
     private void showSavedInspections() {
         try {
-            List<String> ids = getRecordIds();
-            if (ids.isEmpty()) { Toast.makeText(this, "لا توجد فحوصات محفوظة", Toast.LENGTH_SHORT).show(); return; }
+            final List<String> allIds = getRecordIds();
+            if (allIds.isEmpty()) { Toast.makeText(this, "لا توجد فحوصات محفوظة", Toast.LENGTH_SHORT).show(); return; }
+
+            LinearLayout box = new LinearLayout(this);
+            box.setOrientation(LinearLayout.VERTICAL);
+            int pad = (int)(12 * getResources().getDisplayMetrics().density);
+            box.setPadding(pad,pad,pad,pad);
+
+            EditText search = new EditText(this);
+            search.setHint("ابحث باسم المالك أو رقم اللوحة أو التاريخ");
+            search.setSingleLine(true);
+            search.setTextDirection(View.TEXT_DIRECTION_RTL);
+            search.setGravity(Gravity.RIGHT);
+            box.addView(search, new LinearLayout.LayoutParams(-1,-2));
+
+            TextView count = new TextView(this);
+            count.setGravity(Gravity.RIGHT);
+            count.setPadding(0,8,0,8);
+            box.addView(count, new LinearLayout.LayoutParams(-1,-2));
+
+            ListView list = new ListView(this);
+            box.addView(list, new LinearLayout.LayoutParams(-1,0,1f));
+
+            final List<String> filteredIds = new ArrayList<>();
+            final ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, new ArrayList<>());
+            list.setAdapter(adapter);
+
+            Runnable refresh = () -> {
+                try {
+                    String q = search.getText().toString().trim().toLowerCase(Locale.getDefault());
+                    filteredIds.clear(); adapter.clear();
+                    SharedPreferences sp = getSharedPreferences("inspection_records", MODE_PRIVATE);
+                    for (String id : allIds) {
+                        JSONObject o = new JSONObject(sp.getString("record_"+id, "{}"));
+                        String owner = o.optString("t_owner", "بدون اسم");
+                        String plate = o.optString("t_plate", "");
+                        String date = o.optString("saved_at", "");
+                        String hay = (owner+" "+plate+" "+date).toLowerCase(Locale.getDefault());
+                        if (!q.isEmpty() && !hay.contains(q)) continue;
+                        filteredIds.add(id);
+                        adapter.add(owner + (plate.isEmpty()?"":" — " + plate) + "\n" + date);
+                    }
+                    count.setText("عدد النتائج: " + filteredIds.size() + " من " + allIds.size());
+                    adapter.notifyDataSetChanged();
+                } catch(Exception ignored) {}
+            };
+            refresh.run();
+            search.addTextChangedListener(new android.text.TextWatcher() {
+                public void beforeTextChanged(CharSequence s,int st,int c,int a){}
+                public void onTextChanged(CharSequence s,int st,int b,int c){ refresh.run(); }
+                public void afterTextChanged(android.text.Editable e){}
+            });
+
+            AlertDialog dlg = new AlertDialog.Builder(this)
+                    .setTitle("أرشيف تقارير الفحص")
+                    .setView(box)
+                    .setNegativeButton("إغلاق", null).create();
+            list.setOnItemClickListener((parent, view, position, idv) -> {
+                if (position < 0 || position >= filteredIds.size()) return;
+                String recId = filteredIds.get(position);
+                showArchiveRecordActions(recId, dlg);
+            });
+            dlg.show();
+            Window w = dlg.getWindow();
+            if (w != null) w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, (int)(getResources().getDisplayMetrics().heightPixels*0.82));
+        } catch (Exception e) { showError("تعذر فتح أرشيف التقارير", e); }
+    }
+
+    private void showArchiveRecordActions(String id, AlertDialog archiveDialog) {
+        try {
             SharedPreferences sp = getSharedPreferences("inspection_records", MODE_PRIVATE);
-            String[] labels = new String[ids.size()];
-            for (int i=0;i<ids.size();i++) {
-                JSONObject o = new JSONObject(sp.getString("record_"+ids.get(i), "{}"));
-                String owner = o.optString("t_owner", "بدون اسم");
-                String plate = o.optString("t_plate", "");
-                String date = o.optString("saved_at", "");
-                labels[i] = owner + (plate.isEmpty()?"":" — " + plate) + "\n" + date;
-            }
+            JSONObject o = new JSONObject(sp.getString("record_"+id, "{}"));
+            String owner = o.optString("t_owner", "بدون اسم");
+            String plate = o.optString("t_plate", "");
+            String pdfName = o.optString("pdf_file_name", "");
+            List<String> actions = new ArrayList<>();
+            actions.add("فتح بيانات الفحص وتعديلها");
+            if (!pdfName.isEmpty()) actions.add("فتح ملف PDF / طباعة أو مشاركة");
+            actions.add("حذف هذا الفحص من الأرشيف");
             new AlertDialog.Builder(this)
-                    .setTitle("الفحوصات المحفوظة — اختر فحصاً للتعديل")
-                    .setItems(labels, (d, which) -> loadInspection(ids.get(which)))
-                    .setNegativeButton("إلغاء", null).show();
-        } catch (Exception e) { showError("تعذر فتح الفحوصات المحفوظة", e); }
+                    .setTitle(owner + (plate.isEmpty()?"":" — "+plate))
+                    .setItems(actions.toArray(new String[0]), (d, which) -> {
+                        String a = actions.get(which);
+                        if (a.startsWith("فتح بيانات")) { archiveDialog.dismiss(); loadInspection(id); }
+                        else if (a.startsWith("فتح ملف")) openSavedPdf(pdfName);
+                        else confirmDeleteInspection(id, archiveDialog);
+                    }).setNegativeButton("رجوع", null).show();
+        } catch(Exception e) { showError("تعذر فتح التقرير", e); }
+    }
+
+    private void confirmDeleteInspection(String id, AlertDialog archiveDialog) {
+        new AlertDialog.Builder(this).setTitle("حذف الفحص")
+                .setMessage("سيُحذف سجل الفحص من الأرشيف. ملف PDF المحفوظ في التنزيلات لن يُحذف.")
+                .setPositiveButton("حذف", (d,w) -> {
+                    SharedPreferences sp = getSharedPreferences("inspection_records", MODE_PRIVATE);
+                    sp.edit().remove("record_"+id).apply();
+                    List<String> ids = getRecordIds(); ids.remove(id);
+                    StringBuilder sb = new StringBuilder();
+                    for(String x:ids){ if(sb.length()>0)sb.append(','); sb.append(x); }
+                    sp.edit().putString("record_ids", sb.toString()).apply();
+                    archiveDialog.dismiss();
+                    Toast.makeText(this,"تم حذف الفحص من الأرشيف",Toast.LENGTH_SHORT).show();
+                    showSavedInspections();
+                }).setNegativeButton("إلغاء",null).show();
+    }
+
+    private void openSavedPdf(String fileName) {
+        try {
+            Uri uri = null;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                String[] proj = {MediaStore.MediaColumns._ID};
+                String sel = MediaStore.MediaColumns.DISPLAY_NAME + "=?";
+                android.database.Cursor cur = getContentResolver().query(MediaStore.Downloads.EXTERNAL_CONTENT_URI, proj, sel, new String[]{fileName}, MediaStore.MediaColumns.DATE_ADDED + " DESC");
+                if (cur != null) {
+                    if (cur.moveToFirst()) uri = Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI, String.valueOf(cur.getLong(0)));
+                    cur.close();
+                }
+            } else {
+                File f = new File(new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "تقارير فحص السيارات"), fileName);
+                if (f.exists()) uri = FileProvider.getUriForFile(this, getPackageName()+".fileprovider", f);
+            }
+            if (uri == null) { Toast.makeText(this,"لم يتم العثور على ملف PDF. قد يكون نُقل أو حُذف من التنزيلات.",Toast.LENGTH_LONG).show(); return; }
+            Intent i = new Intent(Intent.ACTION_VIEW);
+            i.setDataAndType(uri, "application/pdf");
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(i, "فتح التقرير / طباعته / مشاركته"));
+        } catch(Exception e) { showError("تعذر فتح ملف PDF", e); }
+    }
+
+    private void attachPdfToCurrentRecord(String fileName) {
+        try {
+            if (currentInspectionId == null || currentInspectionId.isEmpty()) return;
+            SharedPreferences sp = getSharedPreferences("inspection_records", MODE_PRIVATE);
+            JSONObject o = new JSONObject(sp.getString("record_"+currentInspectionId, "{}"));
+            o.put("pdf_file_name", fileName);
+            o.put("pdf_saved_at", new SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(new Date()));
+            sp.edit().putString("record_"+currentInspectionId, o.toString()).apply();
+        } catch(Exception ignored) {}
     }
 
     private void loadInspection(String id) {
@@ -678,6 +800,7 @@ public class MainActivity extends Activity {
             String time = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
             String fileName = "Inspection_" + plate + "_" + time + ".pdf";
             String savedPath = savePdfToDownloads(outDoc, fileName);
+            attachPdfToCurrentRecord(fileName);
             outDoc.close(); outDoc = null;
 
             new AlertDialog.Builder(this)

@@ -24,5 +24,5 @@
 - Added FileProvider access for the optional car_photos folder so the four vehicle-photo camera buttons work.
 
 
-## v16 camera compatibility fix
+## v17 camera compatibility fix
 تم توسيع FileProvider وإضافة ClipData ومنح URI permissions لتطبيقات الكاميرا، خصوصاً لصور الصفحة الرابعة.
