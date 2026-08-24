@@ -148,8 +148,10 @@ public class MainActivity extends Activity {
         String[] interior = {"الزجاجات","فتحة السقف","مقابض الأبواب","الإضاءة والأنوار","الإشارات (الاصطبات)","الديكورات","الشنطة الخلفية","الأبواب الخلفية","الشاشة أو المسجل","المرايات","المساحات","المقاعد","الطبلون"};
         for (String x : interior) addChoice("int_"+x, x, intact);
 
+        form.addView(section("صور السيارة الأربع - اختيارية"));
+        addCarPhotosControls();
+
         form.addView(section("4) فحص المحرك"));
-        addEngineCameraControls();
         addText("engine_kind", "نوع المحرك");
         addChoice("engine_seal", "وضع المحرك", new String[]{"اختر","مختوم","مفكوك"});
         addChoice("engine_consumption", "صرفية المحرك", yesNo);
@@ -220,12 +222,8 @@ public class MainActivity extends Activity {
             addChoice("light_"+x, (i+1) + ") " + x, new String[]{"اختر","لا توجد إشارة","توجد إشارة"});
         }
 
-        form.addView(section("12) صور السيارة - اختيارية (حتى 4 صور)"));
-        addCarPhotosControls();
-
-        form.addView(section("13) بيانات التقرير"));
+        form.addView(section("12) بيانات التقرير"));
         addText("inspector", "اسم المهندس / الفاحص المختص");
-        refreshEnginePhotoPreview();
     }
 
 
