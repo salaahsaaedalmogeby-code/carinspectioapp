@@ -8,6 +8,11 @@ import android.graphics.pdf.PdfDocument;
 import android.graphics.pdf.PdfRenderer;
 import android.net.Uri;
 import android.provider.MediaStore;
+import android.print.PrintAttributes;
+import android.print.PrintDocumentAdapter;
+import android.print.PrintDocumentInfo;
+import android.print.PrintManager;
+import android.print.PageRange;
 import android.os.Environment;
 import android.view.*;
 import android.widget.*;
@@ -26,7 +31,7 @@ public class MainActivity extends Activity {
     private static final String AUTH_PREFS = "system_auth";
     private static final String PASSWORD_HASH_KEY = "password_hash_v1";
     private LinearLayout form;
-    private Button btnSave, btnPdf;
+    private Button btnSave, btnPdf, btnPrint;
     private ImageView enginePhotoPreview;
     private TextView enginePhotoStatus;
     private Map<String, EditText> textFields = new LinkedHashMap<>();
@@ -55,12 +60,14 @@ public class MainActivity extends Activity {
         form = findViewById(R.id.formContainer);
         btnSave = findViewById(R.id.btnSave);
         btnPdf = findViewById(R.id.btnPdf);
+        btnPrint = findViewById(R.id.btnPrint);
 
         findViewById(R.id.btnNew).setOnClickListener(v -> newInspection());
         findViewById(R.id.btnSaved).setOnClickListener(v -> showSavedInspections());
         findViewById(R.id.btnChangePassword).setOnClickListener(v -> changePassword());
         btnSave.setOnClickListener(v -> saveInspection(true));
         btnPdf.setOnClickListener(v -> generatePdf());
+        btnPrint.setOnClickListener(v -> printCurrentReport());
 
         // لا نعرض بيانات النظام قبل نجاح تسجيل الدخول.
         findViewById(R.id.content).setVisibility(View.INVISIBLE);
@@ -895,6 +902,120 @@ public class MainActivity extends Activity {
             try { if (outDoc != null) outDoc.close(); } catch(Exception ignored) {}
             try { if (renderer != null) renderer.close(); } catch(Exception ignored) {}
             try { if (pfd != null) pfd.close(); } catch(Exception ignored) {}
+        }
+    }
+
+    /**
+     * يطبع البيانات الحالية كما هي على الشاشة دون حفظ الفحص في الأرشيف.
+     * يتم إنشاء نسخة PDF مؤقتة داخل ذاكرة التطبيق ثم إرسالها إلى نظام الطباعة في Android.
+     */
+    private void printCurrentReport() {
+        try {
+            File pdf = createCurrentReportForPrint();
+            PrintManager printManager = (PrintManager) getSystemService(Context.PRINT_SERVICE);
+            if (printManager == null) throw new IllegalStateException("خدمة الطباعة غير متاحة على هذا الهاتف");
+
+            String owner = value("owner");
+            String plate = value("plate");
+            String jobName = "تقرير فحص السيارة";
+            if (!plate.isEmpty()) jobName += " - " + plate;
+            else if (!owner.isEmpty()) jobName += " - " + owner;
+
+            PrintAttributes attrs = new PrintAttributes.Builder()
+                    .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+                    .setColorMode(PrintAttributes.COLOR_MODE_COLOR)
+                    .build();
+            printManager.print(jobName, new PdfFilePrintAdapter(pdf), attrs);
+        } catch (Exception e) {
+            showError("تعذر طباعة التقرير", e);
+        }
+    }
+
+    /** ينشئ التقرير الحالي مؤقتاً للطباعة فقط، ولا يستدعي saveInspection(). */
+    private File createCurrentReportForPrint() throws Exception {
+        PdfDocument outDoc = null;
+        PdfRenderer renderer = null;
+        ParcelFileDescriptor pfd = null;
+        try {
+            File template = copyTemplateToCache();
+            pfd = ParcelFileDescriptor.open(template, ParcelFileDescriptor.MODE_READ_ONLY);
+            renderer = new PdfRenderer(pfd);
+            outDoc = new PdfDocument();
+
+            for (int i=0; i<renderer.getPageCount(); i++) {
+                PdfRenderer.Page rp = renderer.openPage(i);
+                int pageW = rp.getWidth();
+                int pageH = rp.getHeight();
+                int renderScale = 2;
+                Bitmap bg = Bitmap.createBitmap(pageW*renderScale, pageH*renderScale, Bitmap.Config.ARGB_8888);
+                bg.eraseColor(Color.WHITE);
+                rp.render(bg, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT);
+                rp.close();
+
+                PdfDocument.Page op = outDoc.startPage(new PdfDocument.PageInfo.Builder(pageW, pageH, i+1).create());
+                Canvas c = op.getCanvas();
+                c.drawBitmap(bg, null, new RectF(0,0,pageW,pageH), null);
+                bg.recycle();
+                if (i == 0) overlayPage1(c, pageW, pageH);
+                if (i == 1) overlayPage2(c, pageW, pageH);
+                if (i == 2) overlayPage3(c, pageW, pageH);
+                outDoc.finishPage(op);
+            }
+
+            File printDir = new File(getCacheDir(), "print_reports");
+            if (!printDir.exists() && !printDir.mkdirs()) throw new IOException("تعذر إنشاء مجلد الطباعة المؤقت");
+            File file = new File(printDir, "current_inspection.pdf");
+            FileOutputStream fos = new FileOutputStream(file);
+            outDoc.writeTo(fos);
+            fos.close();
+            outDoc.close(); outDoc = null;
+            return file;
+        } finally {
+            try { if (outDoc != null) outDoc.close(); } catch(Exception ignored) {}
+            try { if (renderer != null) renderer.close(); } catch(Exception ignored) {}
+            try { if (pfd != null) pfd.close(); } catch(Exception ignored) {}
+        }
+    }
+
+    private class PdfFilePrintAdapter extends PrintDocumentAdapter {
+        private final File file;
+        PdfFilePrintAdapter(File file) { this.file = file; }
+
+        @Override
+        public void onLayout(PrintAttributes oldAttributes, PrintAttributes newAttributes,
+                             CancellationSignal cancellationSignal,
+                             LayoutResultCallback callback, Bundle extras) {
+            if (cancellationSignal.isCanceled()) {
+                callback.onLayoutCancelled();
+                return;
+            }
+            PrintDocumentInfo info = new PrintDocumentInfo.Builder(file.getName())
+                    .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
+                    .setPageCount(3)
+                    .build();
+            callback.onLayoutFinished(info, true);
+        }
+
+        @Override
+        public void onWrite(PageRange[] pages, ParcelFileDescriptor destination,
+                            CancellationSignal cancellationSignal,
+                            WriteResultCallback callback) {
+            try (InputStream in = new FileInputStream(file);
+                 OutputStream out = new FileOutputStream(destination.getFileDescriptor())) {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) > 0) {
+                    if (cancellationSignal.isCanceled()) {
+                        callback.onWriteCancelled();
+                        return;
+                    }
+                    out.write(buf, 0, n);
+                }
+                out.flush();
+                callback.onWriteFinished(new PageRange[]{PageRange.ALL_PAGES});
+            } catch (Exception e) {
+                callback.onWriteFailed(e.getMessage());
+            }
         }
     }
 
