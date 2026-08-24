@@ -22,6 +22,7 @@ public class MainActivity extends Activity {
 
     private static final int REQ_ENGINE_CAMERA = 1201;
     private static final int REQ_CAR_PHOTO_BASE = 1300;
+    private static final int REQ_CAR_GALLERY_BASE = 1400;
     private static final String AUTH_PREFS = "system_auth";
     private static final String PASSWORD_HASH_KEY = "password_hash_v1";
     private LinearLayout form;
@@ -42,7 +43,7 @@ public class MainActivity extends Activity {
     final String[] yesNo = {"اختر", "يوجد", "لا يوجد"};
     final String[] goodBad = {"اختر", "جيد", "غير جيد"};
     final String[] intact = {"اختر", "سليم", "غير سليم"};
-    final String[] bodyBase = {"اختر", "سليم", "رش خفيف", "رش كبير", "سمكرة خفيف", "سمكرة كبير"};
+    final String[] bodyBase = {"اختر", "سليم", "ذحل كبير", "ذحل خفيف", "نمش كبير", "نمش خفيف"};
     final String[] bodyPaint = {"اختر", "سليم", "مقلوب كامل", "قلبة جانبية", "مرشوش كامل", "رشة جزئية (تلقيطات)"};
     final String[] transmissionType = {"اختر", "عادي", "أوتوماتيك"};
     final String[] transferType = {"اختر", "ذاتي", "يدوي"};
@@ -348,7 +349,7 @@ public class MainActivity extends Activity {
 
     private void addCarPhotosControls() {
         TextView note = new TextView(this);
-        note.setText("هذه الصور اختيارية. إذا لم تُلتقط أي صورة فلن تُضاف الصفحة الرابعة إلى التقرير.");
+        note.setText("هذه الصور اختيارية وتظهر داخل المساحة المخصصة للصور في الصفحة الأولى. يمكنك التصوير بالكاميرا أو الاختيار من المعرض.");
         note.setTextSize(14);
         note.setGravity(Gravity.RIGHT);
         note.setPadding(4, 4, 4, 10);
@@ -381,6 +382,10 @@ public class MainActivity extends Activity {
             capture.setText("تصوير");
             capture.setOnClickListener(v -> captureCarPhoto(index));
             row.addView(capture, new LinearLayout.LayoutParams(0, -2, 1));
+            Button gallery = new Button(this);
+            gallery.setText("المعرض");
+            gallery.setOnClickListener(v -> pickCarPhotoFromGallery(index));
+            row.addView(gallery, new LinearLayout.LayoutParams(0, -2, 1));
             Button remove = new Button(this);
             remove.setText("حذف");
             remove.setOnClickListener(v -> {
@@ -418,6 +423,29 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             showError("تعذر فتح الكاميرا", e);
         }
+    }
+
+    private void pickCarPhotoFromGallery(int index) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("image/*");
+            startActivityForResult(intent, REQ_CAR_GALLERY_BASE + index);
+        } catch (Exception e) {
+            showError("تعذر فتح معرض الصور", e);
+        }
+    }
+
+    private String copyGalleryImageToApp(Uri uri, int index) throws IOException {
+        File dir = new File(getFilesDir(), "car_photos");
+        if (!dir.exists()) dir.mkdirs();
+        File photo = new File(dir, "car_" + (index+1) + "_gallery_" + System.currentTimeMillis() + ".jpg");
+        try (InputStream in = getContentResolver().openInputStream(uri); OutputStream out = new FileOutputStream(photo)) {
+            if (in == null) throw new IOException("تعذر قراءة الصورة المختارة");
+            byte[] buf = new byte[8192]; int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+        }
+        return photo.getAbsolutePath();
     }
 
     private void refreshCarPhotoPreview(int index) {
@@ -528,6 +556,18 @@ public class MainActivity extends Activity {
                 new File(pending).delete();
             }
             pendingCarPhotoPaths[index] = "";
+            return;
+        }
+        if (requestCode >= REQ_CAR_GALLERY_BASE && requestCode < REQ_CAR_GALLERY_BASE + 4) {
+            int index = requestCode - REQ_CAR_GALLERY_BASE;
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                try {
+                    carPhotoPaths[index] = copyGalleryImageToApp(data.getData(), index);
+                    refreshCarPhotoPreview(index);
+                    saveInspection(false);
+                } catch (Exception e) { showError("تعذر حفظ الصورة المختارة", e); }
+            }
+            return;
         }
     }
 
@@ -793,7 +833,7 @@ public class MainActivity extends Activity {
                 if (i == 2) overlayPage3(c, pageW, pageH);
                 outDoc.finishPage(op);
             }
-            if (hasCarPhotos()) addCarPhotosPage(outDoc, lastPageW, lastPageH, renderer.getPageCount()+1);
+            // صور السيارة الأربع أصبحت ضمن الصفحة الأولى؛ لا توجد صفحة صور إضافية.
 
             String plate = safeName(value("plate"));
             if (plate.isEmpty()) plate = "car";
@@ -871,13 +911,26 @@ public class MainActivity extends Activity {
         drawCenteredAutoFit(c,value("plate"), 164.6f, vehicleRow2Y, 43, 11.0f, 5.8f);
         drawCenteredAutoFit(c,value("drive"), 60.7f, vehicleRow2Y, 57, 11.0f, 5.8f);
 
-        if (enginePhotoPath != null && !enginePhotoPath.isEmpty() && new File(enginePhotoPath).exists()) {
-            Bitmap photo = decodeScaledBitmap(enginePhotoPath, 1600, 1200);
-            if (photo != null) {
-                RectF box = new RectF(196, 313, 558, 583);
-                drawBitmapCenterCrop(c, photo, box);
-                photo.recycle();
+        // أربع صور للسيارة داخل نفس مساحة الصورة في الصفحة الأولى (2 × 2).
+        RectF photoArea = new RectF(196, 313, 558, 583);
+        float gap = 4f;
+        float halfW = (photoArea.width() - gap) / 2f;
+        float halfH = (photoArea.height() - gap) / 2f;
+        RectF[] photoBoxes = new RectF[]{
+                new RectF(photoArea.left, photoArea.top, photoArea.left+halfW, photoArea.top+halfH),
+                new RectF(photoArea.left+halfW+gap, photoArea.top, photoArea.right, photoArea.top+halfH),
+                new RectF(photoArea.left, photoArea.top+halfH+gap, photoArea.left+halfW, photoArea.bottom),
+                new RectF(photoArea.left+halfW+gap, photoArea.top+halfH+gap, photoArea.right, photoArea.bottom)
+        };
+        Paint photoBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
+        photoBorder.setStyle(Paint.Style.STROKE); photoBorder.setStrokeWidth(1f); photoBorder.setColor(Color.GRAY);
+        for (int i=0; i<4; i++) {
+            String path = carPhotoPaths[i];
+            if (path != null && !path.isEmpty() && new File(path).exists()) {
+                Bitmap photo = decodeScaledBitmap(path, 1200, 900);
+                if (photo != null) { drawBitmapCenterCrop(c, photo, photoBoxes[i]); photo.recycle(); }
             }
+            c.drawRect(photoBoxes[i], photoBorder);
         }
 
         // الأجزاء الداخلية: مركز خلية جيد/سيئ، لا فوق الكلمة.
@@ -893,10 +946,10 @@ public class MainActivity extends Activity {
         // القاعدة: الإجابة في الصف الأبيض تحت اسم الاختيار.
         String base = value("base");
         if ("سليم".equals(base)) tick(c,mark,482,627);
-        else if ("رش كبير".equals(base)) tick(c,mark,443,627);
-        else if ("رش خفيف".equals(base)) tick(c,mark,406.5f,627);
-        else if ("سمكرة كبير".equals(base)) tick(c,mark,366.5f,627);
-        else if ("سمكرة خفيف".equals(base)) tick(c,mark,323,627);
+        else if ("ذحل كبير".equals(base)) tick(c,mark,443,627);
+        else if ("ذحل خفيف".equals(base)) tick(c,mark,406.5f,627);
+        else if ("نمش كبير".equals(base)) tick(c,mark,366.5f,627);
+        else if ("نمش خفيف".equals(base)) tick(c,mark,323,627);
         // ملاحظات القاعدة تبدأ على نفس سطر "ملاحظات أخرى" وفي المساحة الفارغة يساره.
         drawWrappedRtl(c,pdfPaint(8.5f),value("base_notes"),225,599,185,11,3);
 
