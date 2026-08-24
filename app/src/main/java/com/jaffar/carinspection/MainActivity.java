@@ -109,6 +109,42 @@ public class MainActivity extends Activity {
         return s;
     }
 
+    /**
+     * خيار خاص بإشارات الطبلون: يعرض الرمز البصري أمام اسم الإشارة
+     * ثم نفس قائمة الحالة المستخدمة سابقاً. لا يؤثر ذلك على منطق التقرير.
+     */
+    private Spinner addDashboardChoice(String key, String labelText, String[] options, int iconRes) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        row.setPadding(4, dp(7), 4, dp(2));
+
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(iconRes);
+        icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        icon.setContentDescription(labelText);
+        LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(52), dp(52));
+        iconLp.setMargins(dp(8), 0, 0, 0);
+        row.addView(icon, iconLp);
+
+        TextView label = new TextView(this);
+        label.setText(labelText);
+        label.setTextSize(16);
+        label.setTypeface(Typeface.DEFAULT_BOLD);
+        label.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+        label.setTextDirection(View.TEXT_DIRECTION_RTL);
+        row.addView(label, new LinearLayout.LayoutParams(0, dp(52), 1f));
+        form.addView(row, new LinearLayout.LayoutParams(-1, -2));
+
+        Spinner s = new Spinner(this);
+        ArrayAdapter<String> a = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, options);
+        s.setAdapter(a);
+        form.addView(s, new LinearLayout.LayoutParams(-1, -2));
+        choiceFields.put(key, s);
+        return s;
+    }
+
     private void newInspection() {
         currentInspectionId = null;
         enginePhotoPath = "";
@@ -148,10 +184,9 @@ public class MainActivity extends Activity {
         String[] interior = {"الزجاجات","فتحة السقف","مقابض الأبواب","الإضاءة والأنوار","الإشارات (الاصطبات)","الديكورات","الشنطة الخلفية","الأبواب الخلفية","الشاشة أو المسجل","المرايات","المساحات","المقاعد","الطبلون"};
         for (String x : interior) addChoice("int_"+x, x, intact);
 
-        form.addView(section("صور السيارة الأربع - اختيارية"));
-        addCarPhotosControls();
-
         form.addView(section("4) فحص المحرك"));
+        // الصور الأربع تحل محل خيار صورة المحرك القديم وتظهر مباشرة قبل بيانات فحص المحرك.
+        addCarPhotosControls();
         addText("engine_kind", "نوع المحرك");
         addChoice("engine_seal", "وضع المحرك", new String[]{"اختر","مختوم","مفكوك"});
         addChoice("engine_consumption", "صرفية المحرك", yesNo);
@@ -217,10 +252,19 @@ public class MainActivity extends Activity {
                 "حرارة المحرك", "شمعات التسخين/Glow Plug", "ABS", "ضغط زيت المحرك", "حرارة سائل التبريد", "ESP",
                 "Check Engine", "مستوى زيت المحرك", "مانع الانزلاق/Traction", "بطارية", "Airbag", "ضغط الإطارات"
         };
+        int[] lightIcons = {
+                R.drawable.dash_4wd, R.drawable.dash_brake, R.drawable.dash_service, R.drawable.dash_tbelt,
+                R.drawable.dash_key, R.drawable.dash_steering, R.drawable.dash_engine_temp, R.drawable.dash_glow,
+                R.drawable.dash_abs, R.drawable.dash_oil_pressure, R.drawable.dash_coolant, R.drawable.dash_esp,
+                R.drawable.dash_check_engine, R.drawable.dash_oil_level, R.drawable.dash_traction, R.drawable.dash_battery,
+                R.drawable.dash_airbag, R.drawable.dash_tpms
+        };
         for (int i=0; i<lights.length; i++) {
             String x = lights[i];
-            addChoice("light_"+x, (i+1) + ") " + x, new String[]{"اختر","لا توجد إشارة","توجد إشارة"});
+            addDashboardChoice("light_"+x, (i+1) + ") " + x,
+                    new String[]{"اختر","لا توجد إشارة","توجد إشارة"}, lightIcons[i]);
         }
+
 
         form.addView(section("12) بيانات التقرير"));
         addText("inspector", "اسم المهندس / الفاحص المختص");
